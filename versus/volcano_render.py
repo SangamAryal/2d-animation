@@ -264,9 +264,7 @@ class VolcanoRenderer:
         for (x, y, s) in fr["deco"]:
             c.drawCircle(x, y, s, skia.Paint(AntiAlias=True, Color=skia.Color(235, 240, 255, 150)))
         for (x, y, s) in fr["flakes"]:
-            c.drawCircle(x, y, s * 2.2, skia.Paint(AntiAlias=True, Color=skia.Color(200, 225, 255, 60),
-                                                   MaskFilter=skia.MaskFilter.MakeBlur(skia.kNormal_BlurStyle, 5)))
-            self.flake(c, x, y, s, t)
+            self.snowbuddy(c, x, y, s, t, heat)
 
         # steam
         for (x, y, t0, sz) in fr["steam"]:
@@ -314,14 +312,67 @@ class VolcanoRenderer:
         if fade < 1:
             c.drawRect(skia.Rect(0, 0, W, H), skia.Paint(Color=skia.Color(0, 0, 0, int(255 * (1 - fade)))))
 
-    def flake(self, c, x, y, s, t):
-        p = skia.Paint(AntiAlias=True, StrokeWidth=2.2, StrokeCap=skia.Paint.kRound_Cap, Color=hex2color("#FFFFFF"))
-        rot = t * 0.8 + x * 0.01
-        for k in range(3):
-            a = rot + k * math.pi / 3
-            dx, dy = math.cos(a) * s * 1.3, math.sin(a) * s * 1.3
-            c.drawLine(x - dx, y - dy, x + dx, y + dy, p)
-        c.drawCircle(x, y, s * 0.35, skia.Paint(AntiAlias=True, Color=hex2color("#FFFFFF")))
+    def snowbuddy(self, c, x, y, s, t, heat):
+        """A little snowball character: crystal crown, face, cheeks. Panics near the hot crater."""
+        cfg = self.cfg
+        r = s * 4.2                     # 23-34 px
+        seed = (x * 7.3 + s * 13.1) % 6.28
+        wob = math.sin(t * 3.2 + seed) * 0.18
+        near = max(0.0, 1 - abs(y - cfg.crater_y) / 260) * (1 if abs(x - cfg.crater_x) < cfg.crater_half * 1.8 else 0)
+        scared = near > 0.15
+        shiver = (math.sin(t * 60 + seed) * 2.0 * near) if scared else 0.0
+        c.save()
+        c.translate(x + shiver, y)
+        c.rotate(math.degrees(wob))
+        # cold glow so it reads against the dark sky
+        c.drawCircle(0, 0, r * 1.9, skia.Paint(AntiAlias=True, Color=skia.Color(150, 205, 255, 70),
+                                               MaskFilter=skia.MaskFilter.MakeBlur(skia.kNormal_BlurStyle, 9)))
+        # crystal crown
+        crown = skia.Paint(AntiAlias=True, StrokeWidth=3, StrokeCap=skia.Paint.kRound_Cap, Color=hex2color("#CFEAFF"))
+        for k in range(-1, 2):
+            a = -math.pi / 2 + k * 0.55
+            ex, ey = math.cos(a) * r * 1.55, math.sin(a) * r * 1.55
+            c.drawLine(math.cos(a) * r * 0.8, math.sin(a) * r * 0.8, ex, ey, crown)
+            c.drawLine(ex, ey, ex + math.cos(a + 0.9) * r * 0.32, ey + math.sin(a + 0.9) * r * 0.32, crown)
+            c.drawLine(ex, ey, ex + math.cos(a - 0.9) * r * 0.32, ey + math.sin(a - 0.9) * r * 0.32, crown)
+        # body with soft blue shading + outline
+        c.drawCircle(0, 0, r, skia.Paint(AntiAlias=True, Shader=skia.GradientShader.MakeRadial(
+            (-r * 0.35, -r * 0.4), r * 1.5, [hex2color("#FFFFFF"), hex2color("#EAF5FF"), hex2color("#A9D3FF")], [0, 0.5, 1])))
+        c.drawCircle(0, 0, r, skia.Paint(AntiAlias=True, Style=skia.Paint.kStroke_Style, StrokeWidth=2.2,
+                                         Color=hex2color("#5E8FD6")))
+        # cheeks
+        cheek = skia.Paint(AntiAlias=True, Color=hex2color("#FF9DB8", 170))
+        c.drawOval(skia.Rect(-r * 0.72, r * 0.08, -r * 0.38, r * 0.3), cheek)
+        c.drawOval(skia.Rect(r * 0.38, r * 0.08, r * 0.72, r * 0.3), cheek)
+        ink = skia.Paint(AntiAlias=True, Color=hex2color("#1D2A4A"))
+        blink = (math.sin(t * 1.3 + seed * 3) > 0.985) and not scared
+        if scared:
+            # wide eyes + "O" mouth
+            for ex in (-r * 0.33, r * 0.33):
+                c.drawCircle(ex, -r * 0.12, r * 0.2, skia.Paint(AntiAlias=True, Color=hex2color("#FFFFFF")))
+                c.drawCircle(ex, -r * 0.12, r * 0.2, skia.Paint(AntiAlias=True, Style=skia.Paint.kStroke_Style,
+                                                               StrokeWidth=1.6, Color=hex2color("#1D2A4A")))
+                c.drawCircle(ex, -r * 0.08, r * 0.09, ink)
+            c.drawOval(skia.Rect(-r * 0.14, r * 0.22, r * 0.14, r * 0.58), ink)
+            # sweat drop
+            d = skia.Path()
+            d.moveTo(r * 0.78, -r * 0.62); d.quadTo(r * 1.02, -r * 0.2, r * 0.8, -r * 0.18)
+            d.quadTo(r * 0.6, -r * 0.2, r * 0.78, -r * 0.62)
+            c.drawPath(d, skia.Paint(AntiAlias=True, Color=hex2color("#7CC4FF")))
+        else:
+            for ex in (-r * 0.32, r * 0.32):
+                if blink:
+                    c.drawLine(ex - r * 0.12, -r * 0.1, ex + r * 0.12, -r * 0.1,
+                               skia.Paint(AntiAlias=True, StrokeWidth=2, Color=hex2color("#1D2A4A")))
+                else:
+                    c.drawCircle(ex, -r * 0.1, r * 0.13, ink)
+                    c.drawCircle(ex + r * 0.04, -r * 0.15, r * 0.045, skia.Paint(AntiAlias=True, Color=hex2color("#FFFFFF")))
+            # determined little smile
+            m = skia.Path()
+            m.moveTo(-r * 0.2, r * 0.25); m.quadTo(0, r * 0.45, r * 0.2, r * 0.25)
+            c.drawPath(m, skia.Paint(AntiAlias=True, Style=skia.Paint.kStroke_Style, StrokeWidth=2,
+                                     StrokeCap=skia.Paint.kRound_Cap, Color=hex2color("#1D2A4A")))
+        c.restore()
 
     def text(self, c, s, f, y, col, outline=False):
         w = f.measureText(s)
