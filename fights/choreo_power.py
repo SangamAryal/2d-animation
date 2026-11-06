@@ -270,25 +270,32 @@ def build():
     # ---------------- long intro: POWER stomps in, SPEED arrives, stare-down
     INTRO = 3.82
     shift(S, P, ev, 2.1, INTRO)
-    x = 760
+    # both walk in from opposite sides at the same time
+    x = 620
     P.key(0.0, "heavy1", x)
     steps = [0.45 + i * 0.52 for i in range(7)]
     for i, t in enumerate(steps):
-        x -= (760 - px) / len(steps)
+        x -= (620 - px) / len(steps)
         P.key(t, "heavy2" if i % 2 == 0 else "heavy1", x, "io")
         E(t, "stomp", x=x, v=1.0)
     P.key(4.3, "shoulder", px)
     P.key(5.2, "shoulder", px, dy=-3)
     P.key(5.95, "shoulder", px)
-    S.key(0.0, "dash", -1300)
-    S.key(4.00, "dash", -1300)
-    S.key(4.10, "dash", -180, "lin")
-    S.key(4.21, "guard_low", -150, "snap")
+    # SPEED: light, quick steps (twice POWER's pace)
+    x = -560
+    S.key(0.0, "walk1", x)
+    t, i = 0.0, 0
+    while t < 3.55:
+        t += 0.26
+        x += (560 - 150) / 14
+        S.key(t, "walk2" if i % 2 == 0 else "walk1", x, "io")
+        E(t, "step", who="S", v=0.35)
+        i += 1
+    # a quick sword flourish, then the low stance
+    S.key(3.90, "rise_cut", -150, "out", grip=0)
+    S.key(4.15, "guard_low", -150, "io")
     S.key(5.2, "guard_low", -150, dy=-2)
     S.key(5.95, "guard_low", -150)
-    E(4.02, "zip", v=1.0)
-    E(0.0, "focus", who="P", until=4.05)
-    E(4.12, "skid", x=-160, v=1.0)
     E(4.6, "heart", v=0.8)
     E(5.15, "heart", v=0.9)
     E(5.55, "banner", text="FIGHT!")
