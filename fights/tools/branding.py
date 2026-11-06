@@ -160,7 +160,7 @@ def banner(out):
         c.drawString(txt, lx + 7, y + 8, f, fill(col("#1b1714", 0.35)))
         c.drawString(txt, lx, y, f, fill(col(color)))
     sub = skia.Font(typeface("Bold"), 38)
-    c.drawString("STICK FIGHTS  •  NEW BATTLES WEEKLY", lx + 6, 905, sub,
+    c.drawString("STICK FIGHTS", lx + 6, 905, sub,
                  fill(col("#5b4a39")))
     surf.makeImageSnapshot().save(out)
 
