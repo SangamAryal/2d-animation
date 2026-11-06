@@ -44,8 +44,9 @@ class SimConfig:
     hole_pull: float = 0.0           # px/s^2 pull toward the hole (replaces gravity)
     swirl_drag: float = 0.0          # 1/s drag on sideways speed around the hole
     max_balls: int = 2200
+    bounce_sound_min: float = 140.0  # impact speed (px/s) that makes a bounce sound
     min_balls_end: bool = False      # end when every ball is gone
-    hold_after_full: float = 3.0     # seconds to keep running after the end condition
+    hold_after_full: float = 5.0     # seconds to keep running after the end condition
     max_seconds: float = 75.0
     seed: int = 7
     start_balls: tuple = ((130.0, -260.0, -260.0, 0.0),)   # x, y, vx, vy
@@ -147,7 +148,7 @@ def simulate(cfg: SimConfig):
                     vn = pvx_ * nx_ + pvy_ * ny_
                     if vn > 0:
                         pvx_ -= 2 * vn * nx_; pvy_ -= 2 * vn * ny_
-                        bounces.append(vn * 0.5)
+                        bounces.append((vn * 0.5, pxp, 1))  # kind 1 = cutter hits wall
             m = slice(0, n)
             if cfg.gravity and not cfg.hole_pull:
                 vy[m] += cfg.gravity * dt
@@ -210,6 +211,8 @@ def simulate(cfg: SimConfig):
                         rel = (vx[i] - surf_vx) * nx_ + (vy[i] - surf_vy) * ny_
                         if rel < 0:
                             vx[i] -= rel * nx_ * 1.15; vy[i] -= rel * ny_ * 1.15
+                            if -rel > cfg.bounce_sound_min:
+                                bounces.append((-rel, x[i], 0))
             # moving cutter body pushes balls (hub)
             if cfg.pivot_moves and cfg.pivot_radius > 0:
                 rx = x[:n] - pxp; ry = y[:n] - pyp
@@ -264,8 +267,8 @@ def simulate(cfg: SimConfig):
                                 x[i], y[i], vx[i], vy[i] = px_, py_, nvx, nvy
                         gen[i] = g; cool[i] = cfg.cut_cooldown
                         cuts.append((x[i], y[i], g))
-                    elif n < 24 and vn > 250:
-                        bounces.append(vn)
+                    elif vn > cfg.bounce_sound_min:
+                        bounces.append((vn, x[i], 0))
             for (bx, by, bvx, bvy, g) in wall_new:
                 x[n], y[n], vx[n], vy[n], gen[n], cool[n] = bx, by, bvx, bvy, g, cfg.cut_cooldown
                 n += 1
@@ -300,7 +303,9 @@ def simulate(cfg: SimConfig):
         out["pivot"].append((pxp, pyp))
         out["hole"].append(hole_r)
         out["cuts"].append(cuts)
-        out["bounces"].append(bounces)
+        # keep the strongest impacts of the frame (plus how many there were) for the sound
+        bounces.sort(key=lambda b: -b[0])
+        out["bounces"].append((bounces[:10], len(bounces)))
         out["eats"].append(eats)
         out["eaten"].append(eaten_total)
         if end_at is not None and t - end_at >= cfg.hold_after_full:

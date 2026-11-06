@@ -21,16 +21,17 @@ class Scenario:
 
 SCENARIOS: dict[str, Scenario] = {
     "katana": Scenario(
-        title="KATANA", subtitle="EVERY CUT  =  ×2", sim=SimConfig(), cutter="katana",
+        title="KATANA", subtitle="EVERY CUT  =  ×2", cutter="katana",
+        sim=SimConfig(spin_start=1.0, spin_end=1.4, cut_cooldown=3.2),
     ),
     "shuriken": Scenario(
         title="SHURIKEN", subtitle="IT BOUNCES.  EVERY CUT  =  ×2",
         sim=SimConfig(
             blades=tuple((k * math.pi / 2, 0.0, 140.0) for k in range(4)),
             cut_from=0.0, blade_half_width=7.0,
-            spin_start=1.6, spin_end=2.2, spin_ramp=25.0,
+            spin_start=0.9, spin_end=1.2, spin_ramp=40.0,
             pivot_moves=True, pivot_radius=140.0, pivot_start=(-150.0, -200.0), pivot_vel=(1000.0, 0.0),
-            cut_cooldown=1.2, max_balls=2000, seed=11,
+            cut_cooldown=1.8, max_balls=2000, seed=11,
             start_balls=((180.0, -100.0, -150.0, 0.0),),
         ),
         cutter="shuriken", accent="#3EE6C9", note_base=392.0,
@@ -41,8 +42,8 @@ SCENARIOS: dict[str, Scenario] = {
         title="LASER", subtitle="EVERY HIT  =  ×3",
         sim=SimConfig(
             blades=((0.0, -455.0, 455.0),), cut_from=0.0, blade_half_width=3.0,
-            spin_start=0.45, spin_end=0.7, spin_ramp=20.0,
-            split_into=3, split_kick=300.0, cut_cooldown=2.4, max_balls=2200, seed=5,
+            spin_start=0.2, spin_end=0.3, spin_ramp=40.0,
+            split_into=3, split_kick=300.0, cut_cooldown=5.5, max_balls=2200, seed=5,
             start_balls=((0.0, -300.0, 180.0, 0.0),),
         ),
         cutter="laser", accent="#FF3B6B", note_base=294.0,
