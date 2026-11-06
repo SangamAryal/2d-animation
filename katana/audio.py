@@ -60,7 +60,7 @@ def add(buf: np.ndarray, clip: np.ndarray, at: int, gain: float, pan: float = 0.
     buf[at:end, 1] += c * r
 
 
-def build_audio(sim: dict, out_wav: str, seed: int = 3):
+def build_audio(sim: dict, out_wav: str, note_base: float = 330.0, seed: int = 3):
     rng = np.random.default_rng(seed)
     cfg = sim["cfg"]
     fps = cfg.fps
@@ -79,6 +79,8 @@ def build_audio(sim: dict, out_wav: str, seed: int = 3):
 
     shing_cache: dict[int, np.ndarray] = {}
     tap_clip = tap()
+    tg = np.arange(int(0.25 * SR)) / SR
+    gulp = np.sin(2 * math.pi * (160 - 260 * tg) * tg) * np.exp(-14 * tg)
     for fi in range(n_frames):
         at = int(fi / fps * SR)
         cuts = sim["cuts"][fi]
@@ -89,20 +91,24 @@ def build_audio(sim: dict, out_wav: str, seed: int = 3):
             for (x, y, g) in cuts[:3]:
                 step = int(g) + 2
                 if step not in shing_cache:
-                    shing_cache[step] = shing(note_freq(step, 330.0), rng=rng)
+                    shing_cache[step] = shing(note_freq(step, note_base), rng=rng)
                 pan = max(-0.8, min(0.8, x / cfg.ring_radius))
                 add(buf, shing_cache[step], at + int(rng.integers(0, SR // fps)), gain, pan)
+        eats = sim["eats"][fi]
+        if eats:
+            add(buf, gulp, at, 0.22 * (1 + 0.2 * math.log2(len(eats))) / min(len(eats), 2))
         for vn in sim["bounces"][fi]:
             add(buf, tap_clip, at, min(0.25, vn / 4000))
 
-    # finale when the ring fills: low thump + bright chord
+    # finale when the run ends: low thump + a chord (falling if the balls lost)
     if sim["full_frame"] is not None:
         at = int(sim["full_frame"] / fps * SR)
         t = np.arange(int(2.5 * SR)) / SR
         thump = np.sin(2 * math.pi * 55 * t * (1 - 0.3 * t)) * np.exp(-3 * t)
         add(buf, thump, at, 0.5)
-        for i, step in enumerate([10, 12, 14, 15]):
-            add(buf, shing(note_freq(step, 330.0), dur=2.0, rng=rng), at + i * 2400, 0.18, (i - 1.5) / 3)
+        steps = [15, 14, 12, 10] if sim["end_kind"] == "empty" else [10, 12, 14, 15]
+        for i, step in enumerate(steps):
+            add(buf, shing(note_freq(step, note_base), dur=2.0, rng=rng), at + i * 2400, 0.18, (i - 1.5) / 3)
 
     # fade the tail with the picture
     tail = int(0.5 * SR)

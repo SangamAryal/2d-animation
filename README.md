@@ -2,4 +2,4 @@
 
 Code-made short videos.
 
-- `katana/`: satisfying ball physics sims (a spinning katana that splits every ball it cuts).
+- `katana/`: satisfying ball physics sims (katana, shuriken, laser, black hole).
