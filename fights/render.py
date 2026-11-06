@@ -87,6 +87,7 @@ class Fight:
         self.ev = d["events"]
         self.end = d["end"]
         self.title = d["title"]
+        self.hp = d.get("hp", [])
         self.tracks = {i: (tr, st) for i, tr, st in self.fighters}
         self.ids = [i for i, _, _ in self.fighters]
 
@@ -127,6 +128,11 @@ class Renderer:
         self.focus = []
         self.win = None
         self.breaks = []
+        self.blood = []      # (vt, pt, dir, n, seed)
+        self.wounds = {}     # who -> [(vt, u, ang, len)]
+        self.damage = []     # (vt, who, amt)
+        self.craters = []    # (vt, x, size, seed)
+        self.hp = f.hp
         for t, k, kw in f.ev:
             vt = video_time(self.frames, t)
             seed = len(self.fx)
@@ -142,9 +148,25 @@ class Renderer:
                     B = f.joints(kw["on"], t)
                     pt = seg_closest(A["guard"], A["tip"], B["hip"], B["neck"])
                 self.fx.append((vt, k, dict(kw, pt=pt, seed=seed)))
+                on = kw.get("on") or f.other(kw["by"])
+                B = f.joints(on, t)
+                dirx = 1.0 if B["hip"][0] > A["hip"][0] else -1.0
+                self.add_wound(vt, on, B, pt, seed)
+                self.blood.append((vt, pt, dirx, 16 if kw.get("big") else 11, seed))
+                self.damage.append((vt, on, kw.get("dmg", 0)))
+            elif k == "dmg":
+                A, B = f.joints(kw["by"], t), f.joints(kw["who"], t)
+                pt = ((B["hip"][0] * 0.4 + B["neck"][0] * 0.6),
+                      (B["hip"][1] * 0.4 + B["neck"][1] * 0.6))
+                dirx = 1.0 if B["hip"][0] > A["hip"][0] else -1.0
+                self.add_wound(vt, kw["who"], B, pt, seed)
+                self.add_wound(vt, kw["who"], B, pt, seed + 1)
+                self.blood.append((vt, pt, dirx, 34 if kw.get("big") else 22, seed))
+                self.damage.append((vt, kw["who"], kw["amt"]))
             elif k == "slam":
                 A = f.joints(kw["by"], t)
                 self.fx.append((vt, k, dict(kw, pt=(A["tip"][0], 2.0), seed=seed)))
+                self.craters.append((vt, A["tip"][0], 1.0, seed))
             elif k in ("ground", "dust", "skid", "gust", "stomp"):
                 self.fx.append((vt, k, dict(kw, pt=(kw["x"], 2.0), seed=seed)))
             elif k == "iai":
@@ -169,6 +191,24 @@ class Renderer:
                     self.cues.append((vt, "riser", dict(dur=kw["dur"])))
             self.cues.append((vt, k, kw))
         self.auto_swooshes()
+
+    def add_wound(self, vt, who, B, pt, seed):
+        hx, hy = B["hip"]
+        nx, ny = B["neck"]
+        vx, vy = nx - hx, ny - hy
+        L2 = vx * vx + vy * vy
+        u = ((pt[0] - hx) * vx + (pt[1] - hy) * vy) / max(1e-6, L2)
+        u = min(0.9, max(0.15, u))
+        rng = np.random.default_rng(seed + 5)
+        self.wounds.setdefault(who, []).append(
+            (vt, u, rng.uniform(-0.9, 0.9), rng.uniform(10, 16)))
+
+    def hp_at(self, who, vt, lag=0.0):
+        hp = 100.0
+        for et, w, amt in self.damage:
+            if w == who and et + lag <= vt:
+                hp -= amt
+        return max(0.0, hp)
 
     def auto_swooshes(self):
         f = self.f
@@ -486,6 +526,143 @@ class Renderer:
                     c.drawCircle(hx, hy, 90 + 10 * math.sin(dt * 40),
                                  fill(col("#5fc2ff", 0.12 + 0.1 * dt / dur)))
 
+    BLOOD = "#b5121b"
+
+    def draw_blood(self, c, vt, flat):
+        g = 1500.0
+        for et, (px, py), dirx, n, seed in self.blood:
+            dt = vt - et
+            if dt < 0:
+                continue
+            rng = np.random.default_rng(seed + 77)
+            for i in range(n):
+                vx = dirx * rng.uniform(80, 520) + rng.uniform(-60, 60)
+                vy = rng.uniform(-50, 420)
+                r = rng.uniform(2.2, 5.0)
+                # time when the drop hits the ground (y = 0)
+                tl = (vy + math.sqrt(vy * vy + 2 * g * max(py, 1))) / g
+                if dt < tl:
+                    x = px + vx * dt
+                    y = py + vy * dt - 0.5 * g * dt * dt
+                    sp = math.hypot(vx, vy - g * dt)
+                    stretch = min(3.0, 1 + sp / 400)
+                    ang = math.atan2(vy - g * dt, vx)
+                    ux, uy = math.cos(ang), math.sin(ang)
+                    c.drawLine(x - ux * r * stretch, y - uy * r * stretch, x, y,
+                               stroke(col(flat or self.BLOOD), r * 1.6))
+                elif not flat and i % 3 == 0:
+                    lx = px + vx * tl
+                    grow = min(1, (dt - tl) / 0.15)
+                    w = r * (1.0 + 0.8 * grow)
+                    c.drawOval(skia.Rect(lx - w, -6.5, lx + w, -2.5),
+                               fill(col(self.BLOOD, 0.75)))
+            if dt < 0.12:   # burst at the wound
+                a = 1 - dt / 0.12
+                for i in range(8):
+                    an = dirx * 0 + rng.uniform(-1.2, 1.2) + (0 if dirx > 0 else math.pi)
+                    L = 18 + dt * 400
+                    c.drawLine(px, py, px + math.cos(an) * L, py + math.sin(an) * L,
+                               stroke(col(flat or self.BLOOD, a), 4 * a + 1))
+
+    def draw_wounds(self, c, who, J, vt, flat):
+        S = J["size"]
+        hx, hy = J["hip"]
+        nx, ny = J["neck"]
+        base = math.atan2(ny - hy, nx - hx)
+        for et, u, ang, ln in self.wounds.get(who, []):
+            if vt < et:
+                continue
+            x, y = hx + (nx - hx) * u, hy + (ny - hy) * u
+            a = base + math.pi / 2 + ang
+            L = ln * S * 0.5 * min(1, (vt - et) / 0.05)
+            ux, uy = math.cos(a), math.sin(a)
+            c.drawLine(x - ux * L, y - uy * L, x + ux * L, y + uy * L,
+                       stroke(col(flat or "#5a0508"), 4.2 * S))
+            c.drawLine(x - ux * L * 0.8, y - uy * L * 0.8, x + ux * L * 0.8,
+                       y + uy * L * 0.8, stroke(col(flat or "#ff4a4a"), 1.6 * S))
+            # a drip running down
+            dl = min(16, (vt - et) * 10) * S
+            if dl > 1:
+                c.drawLine(x, y, x + 1.0, y - dl, stroke(col(flat or self.BLOOD, 0.9), 2.2 * S))
+
+    def draw_craters(self, c, vt, flat):
+        for et, x0, size, seed in self.craters:
+            if vt < et:
+                continue
+            rng = np.random.default_rng(seed + 31)
+            u = min(1, (vt - et) / 0.08)
+            w = 150 * size * u
+            # broken pit cut into the floor (below the ground line)
+            path = skia.Path()
+            path.moveTo(x0 - w, 0)
+            n = 9
+            for i in range(1, n):
+                xx = x0 - w + 2 * w * i / n
+                depth = (22 + rng.uniform(-6, 10)) * math.sin(math.pi * i / n) * u
+                path.lineTo(xx, -depth)
+            path.lineTo(x0 + w, 0)
+            path.close()
+            c.drawPath(path, fill(col(flat or "#3b2f25", 0.95)))
+            # raised slabs tilted up at the rim
+            for side in (-1, 1):
+                for j in range(3):
+                    cxs = x0 + side * (w * 0.55 + j * 22 * size)
+                    h = (14 - j * 3) * u
+                    tilt = side * (8 + j * 3)
+                    p2 = skia.Path()
+                    p2.moveTo(cxs - 12, 0)
+                    p2.lineTo(cxs - 12 + tilt * 0.3, h)
+                    p2.lineTo(cxs + 12 + tilt, h * 0.7)
+                    p2.lineTo(cxs + 12, 0)
+                    p2.close()
+                    c.drawPath(p2, fill(col(flat or "#8a7258")))
+                    c.drawPath(p2, stroke(col(flat or "#3b2f25"), 2))
+            # long cracks that stay
+            rng2 = np.random.default_rng(seed + 32)
+            for i in range(12):
+                side = -1 if i % 2 else 1
+                x, pts = x0 + side * w * 0.6, [(x0 + side * w * 0.6, 0)]
+                for j in range(5):
+                    x += side * rng2.uniform(18, 50) * u
+                    pts.append((x, -rng2.uniform(0, 26) * (j + 1) * 0.35))
+                polyline(c, pts, stroke(col(flat or "#3a3128", 0.85), 2.4))
+
+    def draw_hp(self, c, vt):
+        if not self.hp:
+            return
+        W, H, s = self.W, self.H, self.s
+        top = (0.16 if not self.wide else 0.13) * H + 45 * s
+        bw, bh, gap = W * 0.40, 30 * s, W * 0.05
+        for i, (who, name, color) in enumerate(self.hp):
+            x0 = W / 2 - gap / 2 - bw if i == 0 else W / 2 + gap / 2
+            hp = self.hp_at(who, vt) / 100
+            lag = self.hp_at(who, vt, lag=0.45) / 100
+            # shake the bar right after taking damage
+            jit = 0
+            for et, w, amt in self.damage:
+                if w == who and 0 <= vt - et < 0.25 and amt > 0:
+                    jit = 6 * s * math.sin((vt - et) * 120) * (1 - (vt - et) / 0.25)
+            x0 += jit
+            c.drawRoundRect(skia.Rect(x0 - 4 * s, top - 4 * s, x0 + bw + 4 * s, top + bh + 4 * s),
+                            8 * s, 8 * s, fill(col("#1b1714", 0.85)))
+            c.drawRect(skia.Rect(x0, top, x0 + bw, top + bh), fill(col("#3a302a")))
+            # white "damage taken" lag bar, then the real bar
+            if i == 0:
+                c.drawRect(skia.Rect(x0 + bw * (1 - lag), top, x0 + bw, top + bh),
+                           fill(col("#fff4d6")))
+                c.drawRect(skia.Rect(x0 + bw * (1 - hp), top, x0 + bw, top + bh),
+                           fill(col(color)))
+            else:
+                c.drawRect(skia.Rect(x0, top, x0 + bw * lag, top + bh), fill(col("#fff4d6")))
+                c.drawRect(skia.Rect(x0, top, x0 + bw * hp, top + bh), fill(col(color)))
+            c.drawRect(skia.Rect(x0, top, x0 + bw, top + bh * 0.35),
+                       fill(col("#ffffff", 0.18)))
+            label = f"{int(round(hp * 100))}"
+            fw = self.font_small.measureText(label)
+            lx = x0 + 10 * s if i == 0 else x0 + bw - fw - 10 * s
+            c.drawString(label, lx, top + bh - 6 * s, self.font_small,
+                         fill(col("#ffffff")))
+
     def broken_pieces(self, c, t, flat):
         for bt, who, J in self.breaks:
             if t < bt:
@@ -575,6 +752,7 @@ class Renderer:
                 sa = max(0.0, 0.28 - h / 900)
                 c.drawOval(skia.Rect(J["hip"][0] - 34 * S, -5, J["hip"][0] + 34 * S, 5),
                            fill(col("#3a2e22", sa)))
+        self.draw_craters(c, vt, flat)
         for who in f.ids:
             tr, style = f.tracks[who]
             if not flat and style.get("fast"):
@@ -583,9 +761,12 @@ class Renderer:
             J = f.joints(who, t)
             tails = self.tails(who, t) if style.get("band") else None
             draw_fighter(c, J, style, flat=flat, tails=tails)
+            if not flat:
+                self.draw_wounds(c, who, J, vt, flat)
             if J["p"]["sheath"] < 0.5:
                 self.blade_trail(c, who, t, "#ffffff" if flat else style.get("trail", "#ffffff"))
         self.broken_pieces(c, t, flat)
+        self.draw_blood(c, vt, "#f4f1ea" if flat else None)
         self.draw_fx(c, vt)
         c.restore()
 
@@ -621,11 +802,13 @@ class Renderer:
         c.drawString(left, x0, top, fb, fill(col(lc, a)))
         c.drawString(" vs ", x0 + wl, top, fb, fill(col("#7d6f60", a)))
         c.drawString(right, x0 + wl + gap, top, fb, fill(col(rc, a)))
+        self.draw_hp(c, vt)
         if self.win and vt >= self.win[0]:
             a = min(1, (vt - self.win[0]) / 0.3)
             sc = 1 + 0.4 * max(0, 1 - (vt - self.win[0]) / 0.15)
             font = skia.Font(typeface("ExtraBold"), 80 * s * sc)
-            self.text_center(c, self.win[1], top + 150 * s, font, self.win[2], a)
+            self.text_center(c, self.win[1], top + (200 if self.hp else 150) * s, font,
+                             self.win[2], a)
 
     # ---------------------------------------------------- output
     def render(self, out, stills=None, still_times=()):

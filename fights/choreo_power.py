@@ -25,7 +25,7 @@ def build():
         ev.append((t, kind, kw))
 
     def hit(t):
-        E(t, "hit", by="S", on="P", v=0.8)
+        E(t, "hit", by="S", on="P", v=0.8, dmg=4)
         E(t, "hitstop", dur=0.035)
 
     # ---------------- intro: POWER stomps in, SPEED zips in
@@ -131,6 +131,7 @@ def build():
     S.key(6.43, "block_mid", 405, "snap")
     E(6.50, "clash", v=1.0, big=True)
     E(6.50, "hitstop", dur=0.14)
+    E(6.50, "dmg", who="S", by="P", amt=40)
     E(6.52, "shout", v=0.6)
     S.key(6.51, "tumble", 430, "snap", air=30, rot=40)
     S.key(6.85, "tumble", 760, "lin", air=150, rot=420)
@@ -198,6 +199,7 @@ def build():
     P.key(11.60, "sweep", pxx - 40, "snap")
     E(11.60, "clash", v=1.0, big=True, final=True)
     E(11.60, "hitstop", dur=0.2)
+    E(11.60, "dmg", who="S", by="P", amt=60, big=True)
     S.key(11.61, "tumble", pxx - 300, "snap", air=40, rot=-30, broken=1)
     S.key(12.40, "tumble", pxx - 2300, "out", air=1100, rot=-1500, broken=1)
     E(11.62, "focus", who="P")
@@ -209,4 +211,5 @@ def build():
     S.key(end, "tumble", pxx - 2400, "lin", air=1200, rot=-1700, broken=1)
     P.key(end, "shoulder", pxx - 30, dy=-2)
     return dict(fighters=[("P", P, POWER), ("S", S, SPEED)], events=ev, end=end,
+                hp=[("S", SPEED["name"], SPEED["body"]), ("P", POWER["name"], POWER["body"])],
                 title=TITLE)

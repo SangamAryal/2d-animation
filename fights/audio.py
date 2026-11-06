@@ -230,6 +230,9 @@ def mix(cues, dur, seed=7):
             put(t0, pitch(pick(rng, CLANGS), 1.1 * r), 0.55 * v)
             put(t0, pitch(pick(rng, SWISH), 1.6 * r), 0.5 * v)
             put(t0, pitch(pick(rng, PUNCH), 1.2 * r), 0.35 * v)
+        elif kind == "dmg":
+            put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.85 * r), 0.9)
+            put(t0, pitch(pick(rng, PUNCH), 0.9 * r), 0.8)
         elif kind == "slam":
             put(t0, pitch(sample("soft_heavy"), 0.8), 1.0 * v)
             put(t0, pitch(pick(rng, PUNCH), 0.7), 1.0 * v)
