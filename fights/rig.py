@@ -18,11 +18,11 @@ FOOT_R = 4.0
 
 # Pose keys that are angles (interpolated linearly), and scalar keys.
 ANGLE_KEYS = ["T", "H", "uaf", "faf", "uab", "fab", "thf", "shf", "thb", "shb", "sw"]
-SCALAR_KEYS = ["grip", "air", "dy"]
+SCALAR_KEYS = ["grip", "air", "dy", "rot"]
 STEP_KEYS = ["sheath", "broken"]
 
 BASE = dict(T=0, H=0, uaf=175, faf=165, uab=185, fab=190, thf=170, shf=180,
-            thb=192, shb=182, sw=120, grip=0, air=0, dy=0, sheath=0, broken=0)
+            thb=192, shb=182, sw=120, grip=0, air=0, dy=0, rot=0, sheath=0, broken=0)
 
 
 def d(a):
@@ -196,64 +196,85 @@ def ik2(sx, sy, tx, ty, l1, l2, bend):
     return sx + l1 * math.cos(ang), sy + l1 * math.sin(ang)
 
 
-def solve(p, x, facing, ground=0.0):
-    """Joint positions in world space for pose p at hip x."""
+def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0):
+    """Joint positions in world space for pose p at hip x.
+
+    size scales the whole figure; p["rot"] spins the whole body (flips,
+    tumbling); the figure is snapped so its lowest point touches the ground,
+    then lifted by p["air"] + p["dy"].
+    """
+    rot = p.get("rot", 0.0)
+
     def v(a, length):
-        s, c = d(a)
-        return s * length * facing, c * length
+        s, c = d(a + rot)
+        return s * length * size * facing, c * length * size
 
     def add(pt, a, length):
         dx, dy = v(a, length)
         return (pt[0] + dx, pt[1] + dy)
 
-    hip = (0.0, 0.0)
-    knf = add(hip, p["thf"], L_THIGH)
-    ftf = add(knf, p["shf"], L_SHIN)
-    knb = add(hip, p["thb"], L_THIGH)
-    ftb = add(knb, p["shb"], L_SHIN)
-    low = min(ftf[1], ftb[1], knf[1] - 2, knb[1] - 2)
-    # lying / kneeling: the head and hands must stay above ground too
-    neck0 = add(hip, p["T"], L_TORSO)
-    head0 = add(neck0, p["H"], L_NECK)
-    low = min(low, head0[1] - R_HEAD + FOOT_R, neck0[1] - 2)
-    hy = ground - low + FOOT_R + p["air"] + p["dy"]
-
-    def sh(pt):
-        return (pt[0] + x, pt[1] + hy)
-
     J = {}
-    J["hip"] = sh(hip)
-    J["knf"], J["ftf"], J["knb"], J["ftb"] = sh(knf), sh(ftf), sh(knb), sh(ftb)
-    neck = add(J["hip"], p["T"], L_TORSO)
+    hip = (0.0, 0.0)
+    J["hip"] = hip
+    J["knf"] = add(hip, p["thf"], L_THIGH)
+    J["ftf"] = add(J["knf"], p["shf"], L_SHIN)
+    J["knb"] = add(hip, p["thb"], L_THIGH)
+    J["ftb"] = add(J["knb"], p["shb"], L_SHIN)
+    neck = add(hip, p["T"], L_TORSO)
     J["neck"] = neck
     J["head"] = add(neck, p["H"], L_NECK)
     shoulder = add(neck, p["T"] + 180, 4)
     J["sho"] = shoulder
     J["elf"] = add(shoulder, p["uaf"], L_UARM)
     J["haf"] = add(J["elf"], p["faf"], L_FARM)
-    # back arm: FK, blended toward a two-hand grip with IK
     elb = add(shoulder, p["uab"], L_UARM)
     hab = add(elb, p["fab"], L_FARM)
     g = p["grip"]
     if g > 0.01:
         tgt = add(J["haf"], p["sw"], 9)
-        e2 = ik2(shoulder[0], shoulder[1], tgt[0], tgt[1], L_UARM, L_FARM,
-                 -facing)
-        h2 = tgt
-        # make sure the forearm reaches the target exactly
+        e2 = ik2(shoulder[0], shoulder[1], tgt[0], tgt[1], L_UARM * size,
+                 L_FARM * size, -facing)
         elb = (lerp(elb[0], e2[0], g), lerp(elb[1], e2[1], g))
-        hab = (lerp(hab[0], h2[0], g), lerp(hab[1], h2[1], g))
+        hab = (lerp(hab[0], tgt[0], g), lerp(hab[1], tgt[1], g))
     J["elb"], J["hab"] = elb, hab
-    # sword in hand
-    J["sw_dir"] = v(p["sw"], 1.0)
     J["hilt0"] = add(J["haf"], p["sw"], -8)
     J["guard"] = add(J["haf"], p["sw"], 12)
-    J["tip"] = add(J["haf"], p["sw"], 84)
-    # scabbard at the hip (front side), pointing back and down
+    J["tip"] = add(J["haf"], p["sw"], 12 + blade)
     sc_a = -115 + p["T"] * 0.6
-    J["sc0"] = add(add(J["hip"], p["T"], 8), 90, 10)
+    J["sc0"] = add(add(hip, p["T"], 8), 90, 10)
     J["sc1"] = add(J["sc0"], sc_a, 72)
-    J["sc_a"] = sc_a
+    # ground snap
+    low = min(J["ftf"][1], J["ftb"][1], J["knf"][1] - 2, J["knb"][1] - 2,
+              J["head"][1] - (R_HEAD - FOOT_R) * size, neck[1] - 2)
+    hy = ground - low + FOOT_R + p["air"] + p["dy"]
+    for k in list(J):
+        J[k] = (J[k][0] + x, J[k][1] + hy)
+    J["sw_dir"] = v(p["sw"], 1.0 / size)
+    J["sc_a"] = sc_a + rot
     J["facing"] = facing
+    J["size"] = size
     J["p"] = p
     return J
+
+
+# ---------------------------------------------------------------- speed vs power
+pose("shoulder", T=4, H=4, uaf=165, faf=25, uab=195, fab=175, sw=-130, grip=0,
+     thf=155, shf=180, thb=207, shb=186)
+pose("heavy1", "shoulder", thf=150, shf=195, thb=205, shb=180, T=8)
+pose("heavy2", "shoulder", thf=200, shf=185, thb=158, shb=172, T=8)
+pose("drag1", T=14, H=10, uaf=205, faf=215, uab=195, fab=175, sw=240, grip=0,
+     thf=150, shf=190, thb=210, shb=185)
+pose("drag2", "drag1", thf=205, shf=185, thb=158, shb=176)
+pose("dash", T=58, H=45, uaf=235, faf=255, uab=245, fab=265, sw=-95, grip=0,
+     thf=110, shf=160, thb=250, shb=268)
+pose("slam", T=48, H=44, uaf=140, faf=140, sw=100, grip=1,
+     thf=112, shf=178, thb=242, shb=238)
+pose("heavy_wind", T=-14, H=-8, uaf=5, faf=-40, sw=-150, grip=1,
+     thf=145, shf=180, thb=212, shb=195)
+pose("sweep_wind", T=-14, H=4, uaf=235, faf=250, sw=-80, grip=1,
+     thf=155, shf=182, thb=215, shb=196)
+pose("sweep", T=22, H=14, uaf=95, faf=85, sw=82, grip=1,
+     thf=125, shf=178, thb=235, shb=220)
+pose("tumble", T=0, H=0, uaf=60, faf=30, uab=-70, fab=-40, sw=20, grip=0,
+     thf=135, shf=110, thb=225, shb=250)
+pose("broken_look", "iai_hold", H=55, T=24, broken=1)

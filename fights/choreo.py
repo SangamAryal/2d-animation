@@ -5,6 +5,7 @@ without drawing, blocks only when he must, then wins with one quick-draw cut.
 All times are animation seconds (before hitstop / slow motion is applied).
 """
 from rig import Track
+from styles import KASA, RONIN
 
 TITLE = ("SPEED", "PATIENCE")  # left word = KASA, right word = RONIN
 
@@ -83,7 +84,7 @@ def build():
     # RONIN's counter kick
     R.key(5.36, "kick_wind", -215, "io")
     R.key(5.48, "kick", -178, "snap")
-    E(5.48, "hit", v=1.0, big=True)
+    E(5.48, "hit", by="R", on="K", part="ftf", v=1.0, big=True)
     E(5.48, "hitstop", dur=0.1)
     K.key(5.48, "stagger", kx2 + 10, "lin", grip=1, sw=60)
     K.key(5.60, "recoil", kx2 + 120, "out", air=10)
@@ -163,5 +164,6 @@ def build():
     end = t_brk + 3.2
     R.key(end, "stand_sheathed", x + 178)
     K.key(end, "fallen", x - 30, broken=1)
-    E(t_brk + 1.6, "winner", name="PATIENCE")
-    return R, K, ev, end
+    E(t_brk + 1.6, "winner", name="PATIENCE WINS", color="#d8323c")
+    return dict(fighters=[("K", K, KASA), ("R", R, RONIN)], events=ev, end=end,
+                title=((TITLE[0], KASA["body"]), (TITLE[1], "#d8323c")))
