@@ -101,7 +101,8 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
     back = flat or style["back"]
     pb = stroke(col(back, alpha), W)
     pf = stroke(col(body, alpha), W)
-    if tails and style.get("band"):
+    headless = p.get("headless", 0) > 0.5
+    if tails and style.get("band") and not headless:
         polyline(c, tails[0], stroke(col(flat or style["band"], alpha), 3.6 * S))
         polyline(c, tails[1], stroke(col(flat or style["band"], alpha), 2.8 * S))
     polyline(c, [J["sho"], J["elb"], J["hab"]], pb)
@@ -113,7 +114,12 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
     polyline(c, [J["hip"], J["knf"], J["ftf"]], pf)
     hx, hy = J["head"]
     R = R_HEAD * S * style.get("head", 1.0)
-    c.drawCircle(hx, hy, R, fill(col(body, alpha)))
+    if headless:
+        # bloody stump at the neck
+        c.drawCircle(J["neck"][0], J["neck"][1], W * 0.55, fill(col(flat or "#7a0a10", alpha)))
+        style = dict(style, band=None, hat=None, horns=None, eye=None)
+    else:
+        c.drawCircle(hx, hy, R, fill(col(body, alpha)))
     a = p["H"] + rot
     ux, uy = d(a)
     ux *= J["facing"]

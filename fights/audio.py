@@ -230,6 +230,10 @@ def mix(cues, dur, seed=7):
             put(t0, pitch(pick(rng, CLANGS), 1.1 * r), 0.55 * v)
             put(t0, pitch(pick(rng, SWISH), 1.6 * r), 0.5 * v)
             put(t0, pitch(pick(rng, PUNCH), 1.2 * r), 0.35 * v)
+        elif kind == "decap":
+            put(t0, pitch(pick(rng, SWISH), 0.9), 1.0)
+            put(t0, pitch(pick(rng, RINGS), 0.7), 0.5)
+            put(t0, ground(rng, 0.6))
         elif kind == "dmg":
             put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.85 * r), 0.9)
             put(t0, pitch(pick(rng, PUNCH), 0.9 * r), 0.8)

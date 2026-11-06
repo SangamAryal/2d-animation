@@ -132,6 +132,7 @@ class Renderer:
         self.wounds = {}     # who -> [(vt, u, ang, len)]
         self.damage = []     # (vt, who, amt)
         self.craters = []    # (vt, x, size, seed)
+        self.decaps = []     # (t, who, J_victim, J_attacker)
         self.hp = f.hp
         for t, k, kw in f.ev:
             vt = video_time(self.frames, t)
@@ -154,6 +155,26 @@ class Renderer:
                 self.add_wound(vt, on, B, pt, seed)
                 self.blood.append((vt, pt, dirx, 16 if kw.get("big") else 11, seed))
                 self.damage.append((vt, on, kw.get("dmg", 0)))
+            elif k == "decap":
+                self.decaps.append((t, kw["who"], f.joints(kw["who"], t),
+                                    f.joints(kw["by"], t)))
+                self.fx.append((vt, "decap", dict(kw, seed=seed, big=True)))
+                # head bounce sounds, in sync with the head physics below
+                J, A = f.joints(kw["who"], t), f.joints(kw["by"], t)
+                R = R_HEAD * J["size"]
+                y, vy = J["head"][1], 420.0
+                tt, n = 0.0, 0
+                while tt < 3 and n < 3:
+                    vy -= 1500 / 240
+                    y += vy / 240
+                    if y <= R and vy < 0:
+                        y = R
+                        if abs(vy) * 0.35 >= 60:
+                            self.cues.append((video_time(self.frames, t + tt), "thud",
+                                              dict(v=0.5 / (n + 1))))
+                        vy = -vy * 0.35
+                        n += 1
+                    tt += 1 / 240
             elif k == "dmg":
                 A, B = f.joints(kw["by"], t), f.joints(kw["who"], t)
                 pt = ((B["hip"][0] * 0.4 + B["neck"][0] * 0.6),
@@ -244,6 +265,10 @@ class Renderer:
             vt = i / FPS
             Js = [f.joints(w, t) for w in f.ids]
             xs = [J["hip"][0] for J in Js]
+            for t0, who, J0, A0 in self.decaps:
+                if t >= t0:   # keep the flying head in the shot
+                    d_ = 1 if J0["hip"][0] > A0["hip"][0] else -1
+                    xs.append(J0["hip"][0] + d_ * 170)
             foc = [w for a, b, w in self.focus if a <= vt < b]
             if foc:
                 J = f.joints(foc[0], t)
@@ -564,6 +589,92 @@ class Renderer:
                     c.drawLine(px, py, px + math.cos(an) * L, py + math.sin(an) * L,
                                stroke(col(flat or self.BLOOD, a), 4 * a + 1))
 
+    def head_piece(self, c, t, flat):
+        """The cut-off head: flies, bounces, then rolls to a stop."""
+        f = self.f
+        for t0, who, J, A in self.decaps:
+            if t < t0:
+                continue
+            st = f.tracks[who][1]
+            S = J["size"]
+            R = R_HEAD * S * st.get("head", 1.0)
+            dirx = 1.0 if J["hip"][0] > A["hip"][0] else -1.0
+            x, y = J["head"]
+            vx, vy, ang, w = dirx * 150, 420, 0.0, dirx * -12
+            dt, tt = 1 / 240, 0.0
+            trail = []
+            while tt < t - t0:
+                vy -= 1500 * dt
+                x += vx * dt
+                y += vy * dt
+                if y <= R and vy < 0:
+                    y = R
+                    vy = -vy * 0.35
+                    vx *= 0.7
+                    if abs(vy) < 60:
+                        vy = 0
+                if y <= R + 0.5 and vy == 0:
+                    vx *= 0.985
+                    w = -vx / R
+                ang += w * dt
+                tt += dt
+                trail.append((x, y))
+            c.drawCircle(x, y, R, fill(col(flat or st["body"])))
+            if st.get("band"):
+                ux, uy = math.cos(ang + math.pi / 2), math.sin(ang + math.pi / 2)
+                rx, ry = math.cos(ang), math.sin(ang)
+                cx, cy = x + ux * 3 * S, y + uy * 3 * S
+                c.drawLine(cx - rx * R, cy - ry * R, cx + rx * R, cy + ry * R,
+                           stroke(col(flat or st["band"]), 4.5 * S, skia.Paint.kButt_Cap))
+                # scarf tails trailing behind the head
+                tl = [(x - rx * R, y - ry * R)]
+                for k in range(1, 6):
+                    i = max(0, len(trail) - 1 - k * 6)
+                    px_, py_ = trail[i] if trail else (x, y)
+                    tl.append((px_ - rx * R - k * 2 * dirx, py_ - ry * R + 1))
+                polyline(c, tl, stroke(col(flat or st["band"]), 3.4 * S))
+            # cut face of the neck
+            c.drawCircle(x - math.cos(ang + math.pi / 2) * R * 0.9,
+                         y - math.sin(ang + math.pi / 2) * R * 0.9, R * 0.35,
+                         fill(col(flat or "#7a0a10")))
+
+    def neck_fountain(self, c, t, flat):
+        f = self.f
+        g = 1500.0
+        for t0, who, J0, A in self.decaps:
+            if t < t0:
+                continue
+            rng = np.random.default_rng(91)
+            te = t0
+            i = 0
+            while te < min(t, t0 + 2.2):
+                J = f.joints(who, te)
+                nx, ny = J["neck"]
+                hx, hy = J["hip"]
+                L = math.hypot(nx - hx, ny - hy)
+                ux, uy = (nx - hx) / L, (ny - hy) / L
+                k = (te - t0) / 2.2
+                pulse = 0.65 + 0.35 * math.sin(te * 28)
+                sp = (420 * (1 - 0.75 * k) * pulse) * rng.uniform(0.8, 1.15)
+                spread = rng.uniform(-0.35, 0.35)
+                vx = (ux * math.cos(spread) - uy * math.sin(spread)) * sp
+                vy = (ux * math.sin(spread) + uy * math.cos(spread)) * sp
+                age = t - te
+                r = rng.uniform(2.0, 4.2)
+                tl = (vy + math.sqrt(vy * vy + 2 * g * max(ny, 1))) / g
+                if age < tl:
+                    x = nx + vx * age
+                    y = ny + vy * age - 0.5 * g * age * age
+                    a = math.atan2(vy - g * age, vx)
+                    c.drawLine(x - math.cos(a) * r * 2.2, y - math.sin(a) * r * 2.2, x, y,
+                               stroke(col(flat or self.BLOOD), r * 1.6))
+                elif not flat and i % 5 == 0:
+                    lx = nx + vx * tl
+                    c.drawOval(skia.Rect(lx - r * 1.6, -6.5, lx + r * 1.6, -2.5),
+                               fill(col(self.BLOOD, 0.75)))
+                te += 0.022
+                i += 1
+
     def draw_wounds(self, c, who, J, vt, flat):
         S = J["size"]
         hx, hy = J["hip"]
@@ -714,7 +825,7 @@ class Renderer:
         mode = "normal"
         for et, k, d in self.fx:
             dtf = (vt - et) * FPS
-            if (k in ("clash", "hit") and d.get("big") or k == "slam") and 0 <= dtf < 3:
+            if (k in ("clash", "hit", "decap") and d.get("big") or k == "slam") and 0 <= dtf < 3:
                 mode = "invert"
             if k == "iai":
                 if 0 <= dtf < 3:
@@ -766,6 +877,8 @@ class Renderer:
             if J["p"]["sheath"] < 0.5:
                 self.blade_trail(c, who, t, "#ffffff" if flat else style.get("trail", "#ffffff"))
         self.broken_pieces(c, t, flat)
+        self.head_piece(c, t, flat)
+        self.neck_fountain(c, t, "#f4f1ea" if flat else None)
         self.draw_blood(c, vt, "#f4f1ea" if flat else None)
         self.draw_fx(c, vt)
         c.restore()
