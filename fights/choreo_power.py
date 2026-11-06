@@ -16,6 +16,19 @@ POWER = dict(name="POWER", body="#a3222b", back="#c95a60", horns="#3a2a1a",
 TITLE = (("SPEED", SPEED["body"]), ("POWER", POWER["body"]))
 
 
+def shift(S, P, ev, t_from, dt):
+    """Push every key and event at or after t_from later by dt seconds."""
+    for tr in (S, P):
+        tr.keys = [(t + dt if t >= t_from else t, p, x, e) for t, p, x, e in tr.keys]
+        tr.facing_keys = [(t + dt if t >= t_from else t, f) for t, f in tr.facing_keys]
+    for i, (t, k, kw) in enumerate(ev):
+        kw = dict(kw)
+        for key in ("a0", "a1", "until"):
+            if key in kw and kw[key] >= t_from:
+                kw[key] += dt
+        ev[i] = (t + dt if t >= t_from else t, k, kw)
+
+
 def build():
     S = Track(facing=1)
     P = Track(facing=-1)
@@ -28,23 +41,7 @@ def build():
         E(t, "hit", by="S", on="P", v=0.8, dmg=4)
         E(t, "hitstop", dur=0.035)
 
-    # ---------------- intro: POWER stomps in, SPEED zips in
-    x = 470
-    P.key(0.0, "heavy1", x)
-    for i, t in enumerate([0.5, 1.0, 1.5]):
-        x -= 85
-        P.key(t, "heavy2" if i % 2 == 0 else "heavy1", x, "io")
-        E(t, "stomp", x=x, v=1.0)
-    P.key(1.85, "shoulder", x)
-    px = x  # 215
-    S.key(0.0, "dash", -1300)
-    S.key(1.15, "dash", -1300)
-    S.key(1.25, "dash", -180, "lin")
-    S.key(1.36, "guard_low", -150, "snap")
-    E(1.17, "zip", v=1.0)
-    E(0.0, "focus", who="P", until=1.2)
-    E(1.27, "skid", x=-160, v=1.0)
-    E(1.9, "heart", v=0.8)
+    px = 215  # where POWER stands when the fight starts
 
     # ---------------- flurry #1: two blocked, three land
     S.key(2.18, "guard_low", -150)
@@ -177,7 +174,8 @@ def build():
     S.key(9.60, "dash", pxx - 60, "lin", air=60)
     S.key(9.66, "iai_cut", pxx - 260, "snap")
     E(9.62, "zip", v=1.0)
-    hit(9.64)
+    E(9.64, "hit", by="S", on="P", v=0.8, dmg=2)
+    E(9.64, "hitstop", dur=0.035)
     E(9.66, "skid", x=pxx - 260, v=1.0)
     P.key(9.0, "guard", pxx, T=4)
     P.key(9.7, "guard", pxx, T=6, dy=-2)
@@ -212,7 +210,91 @@ def build():
     P.key(12.0, "sweep", pxx - 40)
     P.key(12.6, "shoulder", pxx - 30)
     E(13.4, "winner", name="POWER WINS", color=POWER["body"])
-    end = 15.6
+    # ---------------- round 2 (inserted): SPEED cuts POWER down further
+    shift(S, P, ev, 8.54, 2.2)
+    S.key(8.10, "guard_low", 952)
+    S.key(8.52, "guard_low", 952)
+    S.key(8.55, "dash", 945, "snap")
+    S.key(8.62, "guard_low", 705, "lin")
+    E(8.55, "zip", v=0.9)
+    P.key(8.85, "guard", pxx, T=4)
+    P.key(8.62, "guard", pxx, T=4)
+    P.key(8.70, "sweep_wind", pxx - 10, "out")
+    P.key(8.84, "sweep", pxx + 20, "snap")
+    S.key(8.76, "crouch", 700, "snap", dy=-28, T=55)      # ducks under it
+    S.key(8.86, "rise_wind", 690, "out")
+    S.key(8.91, "rise_cut", 680, "snap")
+    hit(8.91)
+    S.key(8.99, "side_wind", 684, "out")
+    S.key(9.04, "side_cut", 676, "snap")
+    hit(9.04)
+    P.key(9.10, "stagger", pxx - 15, "out", grip=1, sw=60)
+    S.key(9.12, "crouch", 690)
+    S.key(9.28, "jump_tuck", 660, "out", air=125, rot=-200)
+    S.key(9.38, "high_cut", 645, "snap", air=70, rot=-360)
+    hit(9.38)
+    S.key(9.50, "guard_low", 700, "in", rot=-360)
+    S.key(9.51, "guard_low", 700, "snap")
+    E(9.50, "skid", x=700, v=0.7)
+    # POWER's second slam; SPEED is already gone
+    P.key(9.45, "guard", pxx - 10)
+    P.key(9.95, "heavy_wind", pxx - 5, "io")
+    P.key(10.06, "slam", pxx + 40, "snap")
+    E(10.07, "slam", by="P", v=1.0)
+    E(10.07, "hitstop", dur=0.1)
+    S.key(9.88, "guard_low", 705)
+    S.key(9.92, "dash", 705, "snap", T=-30)
+    S.key(9.98, "guard_low", 905, "lin")
+    E(9.92, "zip", v=0.8)
+    E(9.99, "skid", x=905, v=0.8)
+    # straight back in, through him, and back again
+    S.key(10.20, "dash", 900, "snap")
+    S.key(10.27, "side_cut", 360, "lin")
+    E(10.20, "zip", v=1.0)
+    hit(10.24)
+    S.face(10.28, 1)
+    S.key(10.38, "rise_wind", 410, "out")
+    S.key(10.43, "rise_cut", 420, "snap")
+    hit(10.43)
+    S.key(10.50, "dash", 425, "snap")
+    S.key(10.57, "side_cut", 950, "lin")
+    E(10.50, "zip", v=1.0)
+    hit(10.53)
+    S.face(10.58, -1)
+    S.key(10.70, "guard_low", 952, "out")
+    E(10.60, "skid", x=952, v=0.9)
+    P.key(10.30, "slam", pxx + 40, dy=-3)
+    P.key(10.45, "slam", pxx + 40, "snap", T=40, dy=-8)
+    P.key(10.75, "shoulder", pxx)
+
+    # ---------------- long intro: POWER stomps in, SPEED arrives, stare-down
+    INTRO = 3.82
+    shift(S, P, ev, 2.1, INTRO)
+    x = 760
+    P.key(0.0, "heavy1", x)
+    steps = [0.45 + i * 0.52 for i in range(7)]
+    for i, t in enumerate(steps):
+        x -= (760 - px) / len(steps)
+        P.key(t, "heavy2" if i % 2 == 0 else "heavy1", x, "io")
+        E(t, "stomp", x=x, v=1.0)
+    P.key(4.3, "shoulder", px)
+    P.key(5.2, "shoulder", px, dy=-3)
+    P.key(5.95, "shoulder", px)
+    S.key(0.0, "dash", -1300)
+    S.key(4.00, "dash", -1300)
+    S.key(4.10, "dash", -180, "lin")
+    S.key(4.21, "guard_low", -150, "snap")
+    S.key(5.2, "guard_low", -150, dy=-2)
+    S.key(5.95, "guard_low", -150)
+    E(4.02, "zip", v=1.0)
+    E(0.0, "focus", who="P", until=4.05)
+    E(4.12, "skid", x=-160, v=1.0)
+    E(4.6, "heart", v=0.8)
+    E(5.15, "heart", v=0.9)
+    E(5.55, "banner", text="FIGHT!")
+    E(5.55, "drum", v=1.0)
+
+    end = 15.6 + 2.2 + INTRO
     S.key(end, "fallen", pxx - 300, broken=1, headless=1)
     P.key(end, "shoulder", pxx - 30, dy=-2)
     return dict(fighters=[("P", P, POWER), ("S", S, SPEED)], events=ev, end=end,

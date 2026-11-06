@@ -133,6 +133,7 @@ class Renderer:
         self.damage = []     # (vt, who, amt)
         self.craters = []    # (vt, x, size, seed)
         self.decaps = []     # (t, who, J_victim, J_attacker)
+        self.banners = []    # (vt, text)
         self.hp = f.hp
         for t, k, kw in f.ev:
             vt = video_time(self.frames, t)
@@ -202,6 +203,8 @@ class Renderer:
                 self.breaks.append((t, kw["who"], f.joints(kw["who"], t)))
             elif k == "winner":
                 self.win = (vt, kw["name"], kw.get("color", "#d8323c"))
+            elif k == "banner":
+                self.banners.append((vt, kw["text"]))
             elif k == "focus":
                 end = kw.get("until")
                 self.focus.append((vt, video_time(self.frames, end) if end else 1e9,
@@ -916,6 +919,15 @@ class Renderer:
         c.drawString(" vs ", x0 + wl, top, fb, fill(col("#7d6f60", a)))
         c.drawString(right, x0 + wl + gap, top, fb, fill(col(rc, a)))
         self.draw_hp(c, vt)
+        for bt, text in self.banners:
+            u = vt - bt
+            if 0 <= u < 1.0:
+                sc = 1 + 1.2 * max(0, 1 - u / 0.12)
+                a = min(1, u / 0.06) * min(1, (1.0 - u) / 0.25)
+                font = skia.Font(typeface("ExtraBold"), 150 * s * sc)
+                y = self.gy - 0.30 * H
+                self.text_center(c, text, y + 6 * s, font, "#1b1714", a * 0.6)
+                self.text_center(c, text, y, font, "#ffcf3a", a)
         if self.win and vt >= self.win[0]:
             a = min(1, (vt - self.win[0]) / 0.3)
             sc = 1 + 0.4 * max(0, 1 - (vt - self.win[0]) / 0.15)
