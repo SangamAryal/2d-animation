@@ -2,4 +2,5 @@
 
 Code-made short videos.
 
-- `katana/`: satisfying ball physics sims (a spinning katana that splits every ball it cuts).
+- `katana/`: satisfying ball physics sims (katana, shuriken, laser, black hole).
+- `versus/`: rule-based tug-of-war sims with a % meter (volcano vs snowstorm).
