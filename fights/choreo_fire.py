@@ -5,7 +5,7 @@ elements only show when they use them. The fire user throws fireballs,
 flame-dashes and sends waves of fire; the ice user raises walls and spikes,
 throws shards and freezes the ground. Ice freezes Fire solid at the peak of
 his biggest attack, but Fire melts his way out and ends it with a meteor slam
-that shatters Ice.
+that knocks Ice out.
 """
 from choreo_power import shift
 from rig import Track
@@ -235,16 +235,17 @@ def build():
     E(18.88, "hitstop", dur=0.09)
     I.key(18.88, "recoil", 286, "snap")
     I.key(19.16, "tumble", 262, "out", air=265, rot=-150)
-    I.key(19.37, "fallen", 255, "in", air=0, rot=-270, hidden=0)
-    I.key(19.372, "fallen", 255, rot=-270, hidden=1)
+    I.key(19.37, "fallen", 240, "in", air=0, rot=-360)
+    I.key(19.6, "fallen", 225, "out", rot=-360, dy=10)
+    I.key(19.8, "fallen", 222, "in", rot=-360)
     F.key(18.96, "crouch", 320, "io", grip=0)
     F.key(19.20, "flip", 285, "out", air=345, rot=-180)
     F.key(19.26, "meteor", 280, "io", air=335, rot=0)
     F.key(19.37, "meteor", 268, "in", air=6)
     E(19.26, "el_roar", v=1.0, dur=0.2)
     E(19.37, "boom", x=262, y=20, v=1.4, crater=True)
-    E(19.37, "shatter", who="I")
-    E(19.37, "edmg", who="I", by="F", amt=10, el="fire", burst=False)
+    E(19.6, "thud", v=0.6)
+    E(19.37, "edmg", who="I", by="F", amt=10, el="fire", big=True, burst=False, phys=True)
     E(19.37, "hitstop", dur=0.16)
 
     # ---------------- outro
@@ -331,7 +332,7 @@ def build():
     I.key(r + 4.25, "kneel", 215, "io")
     E(r + 4.2, "skid", x=230, v=0.7)
     F.key(end, "upper", 272, T=-4, H=-10, uab=190, fab=180, dy=-2)
-    I.key(end, "fallen", 255, rot=-270, hidden=1)
+    I.key(end, "fallen", 222, rot=-360)
     return dict(fighters=[("I", I, ICE), ("F", F, FIRE)], events=ev, end=end,
                 hp=[("F", FIRE["name"], FIRE["accent"]), ("I", ICE["name"], ICE["accent"])],
                 title=TITLE)

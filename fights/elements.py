@@ -145,9 +145,17 @@ def prepare(r, t, vt, k, kw):
         pt = ((B["hip"][0] + B["neck"][0]) / 2, (B["hip"][1] + B["neck"][1]) / 2)
         r.damage.append((vt, kw["who"], kw["amt"]))
         rng = np.random.default_rng(e["seed"])
-        if kw.get("mark", True):
+        # they are ordinary people: every hit cuts and bleeds
+        dirx = 1.0 if B["hip"][0] > A["hip"][0] else -1.0
+        bpt = (B["hip"][0] * 0.4 + B["neck"][0] * 0.6, B["hip"][1] * 0.4 + B["neck"][1] * 0.6)
+        big = kw.get("big") or kw["amt"] >= 15
+        r.add_wound(vt, kw["who"], B, bpt, e["seed"])
+        if big:
+            r.add_wound(vt, kw["who"], B, bpt, e["seed"] + 1)
+        r.blood.append((vt, bpt, dirx, 30 if big else 16, e["seed"]))
+        if kw.get("el", "fire") == "fire" and kw.get("mark", True):
             r.el_marks.setdefault(kw["who"], []).append(
-                (t, rng.uniform(0.2, 0.85), kw.get("el", "fire"), rng.uniform(0, 6)))
+                (t, rng.uniform(0.2, 0.85), "fire", rng.uniform(0, 6)))
         if kw.get("burst", True):
             sub("burst", t, x=pt[0], y=pt[1], el=kw.get("el", "fire"),
                 v=1.6 if kw.get("big") else 1.0)
