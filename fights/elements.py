@@ -190,35 +190,42 @@ def decorate(r, c, who, J, style, t, flat):
         return
     S = J["size"]
     fz = frozen(r, who, t)
-    if style.get("flame") and fz < 0.5:
-        k = 1.0
-        for e in r.el:   # flames flare during an aura
-            if e["kind"] == "aura" and e["who"] == who and e["t"] <= t < e["t"] + e["dur"] + 0.4:
-                k = 1.0 + 0.9 * clamp((t - e["t"]) / e["dur"])
-        hx, hy = J["head"]
-        flame(c, hx - J["facing"] * 3, hy + R_HEAD * S * 0.55, 30 * S * k, t, 1.0, w=20 * S)
-        flame(c, hx + J["facing"] * 4, hy + R_HEAD * S * 0.5, 20 * S * k, t, 4.2, w=13 * S)
+    fire = style.get("flame")
+    if not (fire or style.get("crystal")):
+        return
+    # the powers only show on the hands while casting
+    g = 0.0
+    for e in r.el:
+        k, dt = e["kind"], t - e["t"]
+        own = e.get("by", e.get("who"))
+        if own is None:
+            own_el = "fire" if k in ("wave", "firetrail") else (
+                "ice" if k in ("wall", "spikes", "frost") else None)
+            if own_el is None or (own_el == "fire") != bool(fire):
+                continue
+        elif own != who or k in ("edmg", "shatter", "mark", "burst"):
+            continue
+        if k == "freeze":
+            continue
+        if k in ("aura", "orb"):
+            t1 = e["t"] + e["dur"] if k == "aura" else e["t1"]
+            if e["t"] - 0.2 <= t <= t1 + 0.2:
+                g = max(g, clamp(min(t - e["t"] + 0.2, t1 + 0.2 - t) / 0.2))
+        elif -0.32 <= dt <= 0.3:
+            g = max(g, clamp((dt + 0.32) / 0.2) if dt < 0 else clamp(1 - dt / 0.3))
+    if fz > 0.3:
+        g = 0.0
+    if g > 0.02:
         for i, key in enumerate(("haf", "hab")):
             x, y = J[key]
-            c.drawCircle(x, y, 7 * S, fill(col(FIRE[1])))
-            flame(c, x, y - 2, 20 * S * k, t, 2.0 + i * 3, w=13 * S)
-    if style.get("crystal"):
-        hx, hy = J["head"]
-        a = J["p"]["H"] + J["p"].get("rot", 0)
-        ux, uy = math.sin(math.radians(a)) * J["facing"], math.cos(math.radians(a))
-        for off, h in ((-8, 13), (0, 20), (8, 13)):
-            bx = hx + ux * R_HEAD * S * 0.8 - uy * off
-            by = hy + uy * R_HEAD * S * 0.8 + ux * off
-            p = skia.Path()
-            p.moveTo(bx - uy * 4.5, by + ux * 4.5)
-            p.lineTo(bx + ux * h * S, by + uy * h * S)
-            p.lineTo(bx + uy * 4.5, by - ux * 4.5)
-            p.close()
-            c.drawPath(p, fill(col(ICE_FILL)))
-            c.drawPath(p, stroke(col(ICE_EDGE), 1.6))
-        for key in ("haf", "hab"):
-            x, y = J[key]
-            shard(c, x, y, 9 * S, t * 0.0 + (1.0 if key == "haf" else 2.4))
+            if fire:
+                c.drawCircle(x, y, 16 * S * g, fill(col("#ff8a1f", 0.25 * g)))
+                c.drawCircle(x, y, 6 * S * g, fill(col(FIRE[1], g)))
+                flame(c, x, y - 2, 24 * S * g, t, 2.0 + i * 3, a=g, w=14 * S * g)
+            else:
+                c.drawCircle(x, y, 16 * S * g, fill(col("#bfe9ff", 0.35 * g)))
+                shard(c, x, y, 10 * S * g, t * 4 + i * 2.4, g)
+                c.drawCircle(x, y, 3 * S * g, fill(col("#ffffff", g)))
     # burn / frost marks left by elemental hits
     hx, hy = J["hip"]
     nx, ny = J["neck"]

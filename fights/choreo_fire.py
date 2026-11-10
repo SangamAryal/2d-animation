@@ -1,19 +1,22 @@
 """Fight 03: "FIRE vs ICE".
 
-No swords: FIRE (orange, flaming head and fists) throws fireballs, flame-dashes
-and sends waves of fire; ICE (cyan, crystal crown) raises walls and spikes,
-throws shards and freezes the ground. ICE freezes FIRE solid at the peak of
-his biggest attack, but FIRE melts his way out and ends it with a meteor slam
-that shatters ICE.
+Two ordinary stick fighters (no swords) whose powers are fire and ice; the
+elements only show when they use them. The fire user throws fireballs,
+flame-dashes and sends waves of fire; the ice user raises walls and spikes,
+throws shards and freezes the ground. Ice freezes Fire solid at the peak of
+his biggest attack, but Fire melts his way out and ends it with a meteor slam
+that shatters Ice.
 """
 from choreo_power import shift
 from rig import Track
 
-FIRE = dict(name="FIRE", body="#d9480f", back="#f08c4a", limb=8.5, size=1.0,
-            ghost="#ff9a3c", eye="#fff3c4", fast=True, flame=True, unarmed=True)
-ICE = dict(name="ICE", body="#2f9fd6", back="#8fd3f0", limb=8.5, size=1.0,
-           ghost="#bfe9ff", eye="#f2fbff", crystal=True, unarmed=True)
-TITLE = (("FIRE", FIRE["body"]), ("ICE", ICE["body"]))
+FIRE = dict(name="FIRE", body="#2b2522", back="#6a5e56", band="#e8421c", limb=8.5,
+            size=1.0, ghost="#ff9a3c", eye="#ffffff", fast=True, flame=True,
+            unarmed=True, accent="#e8421c")
+ICE = dict(name="ICE", body="#24364a", back="#62788f", band="#8fd8ff", limb=8.5,
+           size=1.03, ghost="#bfe9ff", eye="#ffffff", crystal=True, unarmed=True,
+           accent="#2f9fd6")
+TITLE = (("FIRE", FIRE["accent"]), ("ICE", ICE["accent"]))
 
 
 def build():
@@ -249,7 +252,7 @@ def build():
     F.key(20.3, "kneel", 270, "io")
     F.key(20.75, "idle", 272, "io")
     F.key(21.1, "upper", 272, "out", T=-4, H=-10, uab=190, fab=180)
-    E(20.6, "winner", name="FIRE WINS", color=FIRE["body"])
+    E(20.6, "winner", name="FIRE WINS", color=FIRE["accent"])
     E(20.6, "drum", v=1.0)
     end = 22.6
 
@@ -330,5 +333,5 @@ def build():
     F.key(end, "upper", 272, T=-4, H=-10, uab=190, fab=180, dy=-2)
     I.key(end, "fallen", 255, rot=-270, hidden=1)
     return dict(fighters=[("I", I, ICE), ("F", F, FIRE)], events=ev, end=end,
-                hp=[("F", FIRE["name"], FIRE["body"]), ("I", ICE["name"], ICE["body"])],
+                hp=[("F", FIRE["name"], FIRE["accent"]), ("I", ICE["name"], ICE["accent"])],
                 title=TITLE)
