@@ -6,6 +6,7 @@ throws shards and freezes the ground. ICE freezes FIRE solid at the peak of
 his biggest attack, but FIRE melts his way out and ends it with a meteor slam
 that shatters ICE.
 """
+from choreo_power import shift
 from rig import Track
 
 FIRE = dict(name="FIRE", body="#d9480f", back="#f08c4a", limb=8.5, size=1.0,
@@ -172,7 +173,7 @@ def build():
     F.key(12.40, "cast2", 660, "snap", T=30)
     E(12.40, "wave", x0=640, x1=230, dur=0.44, life=1.2)
     E(12.57, "hitstop", dur=0.05)
-    E(12.64, "edmg", who="I", by="F", amt=32, el="fire", big=True)
+    E(12.64, "edmg", who="I", by="F", amt=22, el="fire", big=True)
     E(12.64, "hitstop", dur=0.12)
     F.key(12.95, "cast2", 660, T=30)
     F.key(13.25, "idle", 660)
@@ -185,15 +186,14 @@ def build():
     E(13.12, "dust", x=205, v=0.9)
 
     # ---------------- FIRE walks in and raises a giant fireball...
-    stroll(F, "F", "fire", 13.3, 14.5, 660, 430)
+    stroll(F, "F", "fire", 13.3, 14.5, 705, 430, step=0.24)
     F.key(14.62, "idle", 430)
     F.key(14.9, "raise", 430, "out")
     E(14.85, "orb", who="F", t1=16.12, r=92, fizzle=True)
     E(15.0, "heart", v=0.8)
     E(15.5, "heart", v=0.9)
-    I.key(13.9, "fallen", 205, rot=-360)
-    I.face(14.0, 1)
-    I.key(14.5, "kneel", 215, "io", rot=0)
+    I.key(13.3, "kneel", 215)
+    I.key(14.5, "kneel", 215)
     I.key(15.05, "kneel", 215, H=-5)
     # ...but ICE slams the ground and freezes him solid
     I.key(15.14, "raise", 215, "out", thf=95, shf=185, thb=150, shb=265)
@@ -201,7 +201,7 @@ def build():
     E(15.22, "thud", v=0.7)
     E(15.22, "frost", x0=245, x1=445, dur=0.5, life=4.0)
     E(15.72, "freeze", who="F", full=0.4, break_t=18.50, glow_t=17.35)
-    E(16.12, "edmg", who="F", by="I", amt=35, el="ice", burst=False, mark=False)
+    E(16.12, "edmg", who="F", by="I", amt=20, el="ice", burst=False, mark=False)
     E(16.12, "hitstop", dur=0.1)
     F.key(18.49, "raise", 430)
     I.key(16.35, "palm_ground", 220)
@@ -252,6 +252,81 @@ def build():
     E(20.6, "winner", name="FIRE WINS", color=FIRE["body"])
     E(20.6, "drum", v=1.0)
     end = 22.6
+
+    # ---------------- extra round (inserted at 13.3): elements collide
+    D = 4.6
+    r = 13.3
+    shift(F, I, ev, r - 0.005, D)
+    end += D
+    I.key(r, "fallen", 205, rot=-360)
+    I.key(r + 0.001, "fallen", 205, rot=0)
+    I.face(r + 0.3, 1)
+    I.key(r + 0.5, "kneel", 215, "io")
+    I.key(r + 0.8, "fist_guard", 215, "io")
+    F.key(r + 0.6, "fist_guard", 660, "io")
+    # spikes again; this time FIRE burns them down
+    I.key(r + 0.95, "stomp_wind", 215, "io")
+    I.key(r + 1.05, "stomp", 218, "snap")
+    E(r + 1.05, "stomp", x=235, v=0.9)
+    E(r + 1.05, "spikes", x0=255, x1=485, dur=0.30, n=7, life=0.30)
+    F.key(r + 1.15, "throw_wind", 660, "io", T=-20)
+    F.key(r + 1.25, "cast2", 652, "snap", T=28)
+    E(r + 1.25, "wave", x0=635, x1=480, dur=0.20, life=0.9)
+    E(r + 1.45, "burst", x=478, y=70, el="steam", v=2.2)
+    E(r + 1.50, "burst", x=440, y=50, el="steam", v=1.6)
+    E(r + 1.45, "el_steam", v=1.4)
+    F.key(r + 1.7, "cast2", 652, T=28)
+    F.key(r + 1.95, "fist_guard", 655, "io")
+    # ICE slides in through the steam: punches and a kick
+    I.key(r + 1.7, "stomp", 218)
+    E(r + 1.75, "frost", x0=235, x1=575, dur=0.22)
+    I.key(r + 1.86, "slide", 235, "io")
+    I.key(r + 2.10, "slide", 560, "lin")
+    E(r + 1.87, "zip", v=0.7)
+    I.key(r + 2.15, "throw", 585, "snap")
+    E(r + 2.15, "thud", v=0.5)
+    F.key(r + 2.15, "fist_guard", 660, "snap", T=-10, H=-6)
+    F.key(r + 2.24, "throw_wind", 662, "out")
+    F.key(r + 2.32, "throw", 648, "snap")
+    E(r + 2.32, "edmg", who="I", by="F", amt=10, el="fire", phys=True)
+    E(r + 2.32, "hitstop", dur=0.07)
+    I.key(r + 2.32, "throw", 585)
+    I.key(r + 2.38, "recoil", 562, "out")
+    I.key(r + 2.52, "kick_wind", 566, "io", grip=0)
+    I.key(r + 2.60, "kick", 588, "snap", grip=0)
+    E(r + 2.60, "edmg", who="F", by="I", amt=8, el="ice", phys=True)
+    E(r + 2.60, "hitstop", dur=0.07)
+    F.key(r + 2.60, "throw", 648)
+    F.key(r + 2.68, "recoil", 690, "out")
+    E(r + 2.70, "skid", x=690, v=0.7)
+    F.key(r + 2.95, "stagger", 705, "io")
+    # ICE flips back, then both throw their biggest shot at once
+    I.key(r + 2.80, "kick", 588, grip=0)
+    I.key(r + 2.90, "crouch", 580, "io", grip=0)
+    I.key(r + 3.10, "jump_tuck", 455, "out", grip=0, air=125, rot=-200)
+    I.key(r + 3.30, "crouch", 335, "in", grip=0, air=0, rot=-360)
+    I.key(r + 3.301, "crouch", 335, grip=0, rot=0)
+    E(r + 3.30, "step", v=0.8)
+    I.key(r + 3.62, "throw_wind", 335, "io", T=-22)
+    I.key(r + 3.72, "throw", 345, "snap")
+    F.key(r + 3.40, "fist_guard", 705, "io")
+    F.key(r + 3.62, "throw_wind", 705, "io", T=-22)
+    F.key(r + 3.72, "throw", 695, "snap")
+    E(r + 3.72, "proj", by="I", el="ice", dur=0.16, to=(520, 110), big=True, end="none")
+    E(r + 3.72, "proj", by="F", el="fire", dur=0.16, to=(520, 110), big=True, end="none")
+    E(r + 3.88, "boom", x=520, y=110, v=0.9)
+    E(r + 3.88, "burst", x=520, y=110, el="ice", v=2.2)
+    E(r + 3.88, "el_icebreak", v=1.2)
+    E(r + 3.88, "hitstop", dur=0.12)
+    E(r + 3.90, "edmg", who="F", by="I", amt=7, el="ice", burst=False, mark=False)
+    F.key(r + 3.90, "throw", 695)
+    F.key(r + 3.98, "recoil", 712, "out")
+    E(r + 3.98, "skid", x=712, v=0.6)
+    F.key(r + 4.4, "idle", 705, "io")
+    I.key(r + 3.90, "throw", 345)
+    I.key(r + 3.98, "recoil", 300, "out")
+    I.key(r + 4.25, "kneel", 215, "io")
+    E(r + 4.2, "skid", x=230, v=0.7)
     F.key(end, "upper", 272, T=-4, H=-10, uab=190, fab=180, dy=-2)
     I.key(end, "fallen", 255, rot=-270, hidden=1)
     return dict(fighters=[("I", I, ICE), ("F", F, FIRE)], events=ev, end=end,

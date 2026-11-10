@@ -11,5 +11,5 @@ videos, no attribution required. Converted to 48 kHz mono Ogg.
 | `metal_click`, `metal_latch` | Kenney "RPG Audio", https://kenney.nl/assets/rpg-audio | CC0 1.0 |
 | `swing_*`, `unsheathe` | "RPG Sound Pack" by artisticdude, https://opengameart.org/content/rpg-sound-pack | CC0 1.0 |
 
-Ice sounds (fight 03): `glass_heavy_*`, `glass_medium_*`, `glass_light_*`, `mining_*`
+Ice sounds (fight 03): `glass_heavy_*`, `glass_medium_*`, `glass_light_*`, `mining_*`, `bell_heavy`
 from Kenney "Impact Sounds" (kenney.nl), CC0.

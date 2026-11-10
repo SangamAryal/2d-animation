@@ -168,18 +168,29 @@ def fire_roar(rng, dur, v=1.0, burst=False):
     return s * flutter * env * 0.5 * v
 
 
-def ice_crackle(rng, dur, v=1.0):
-    """Sparse sharp ticks, like ice creeping and cracking."""
+def icy_wind(rng, dur, v=1.0, rise=False):
+    """Cold airy rush for frost creeping over the ground."""
+    t = _t(dur)
+    n = rng.standard_normal(len(t))
+    s = bp(n, 1800, 7000) * 0.6 + bp(n, 500, 1500) * 0.5
+    u = t / dur
+    env = u ** 1.5 if rise else np.sin(np.pi * u) ** 0.7
+    return s * env * 0.5 * v
+
+
+def swell(x, dur):
+    """Reverse a sample and fade it in: a suck-in that ends on the beat."""
     n = int(dur * SR)
-    out = np.zeros(n + 2000)
-    k = max(3, int(dur * 45))
-    tick = _t(0.03)
-    for i in rng.integers(0, n, k):
-        f = rng.uniform(2500, 7000)
-        s = np.sin(2 * np.pi * f * tick) * np.exp(-220 * tick) * rng.uniform(0.3, 1.0)
-        out[i:i + len(s)] += s[:len(out) - i]
-    out += hp(rng.standard_normal(len(out)), 5000) * 0.05
-    return out[:n] * 0.5 * v
+    y = x[:n][::-1].copy()
+    y *= np.linspace(0, 1, len(y)) ** 1.5
+    return y
+
+
+def chime(factor, dur):
+    """Crystal ring made from the recorded bell, pitched and shortened."""
+    x = pitch(sample("bell_heavy"), factor)
+    n = min(len(x), int(dur * SR))
+    return x[:n] * np.linspace(1, 0, n) ** 0.8
 
 
 SFX_DIR = __import__("os").path.join(__import__("os").path.dirname(__file__), "sfx")
@@ -235,7 +246,6 @@ def mix(cues, dur, seed=7):
     GLASS_H = ["glass_heavy_0", "glass_heavy_1", "glass_heavy_2"]
     GLASS_M = ["glass_medium_0", "glass_medium_1"]
     GLASS_L = ["glass_light_0", "glass_light_1"]
-    MINING = ["mining_0", "mining_1"]
     for t0, kind, kw in cues:
         v = kw.get("v", 1.0)
         r = rng.uniform(0.94, 1.06)
@@ -320,34 +330,60 @@ def mix(cues, dur, seed=7):
         elif kind == "el_roar":
             put(t0, fire_roar(rng, kw.get("dur", 1.0), 0.6 * v))
         elif kind == "el_iceform":
-            put(t0, pitch(pick(rng, MINING), 1.25 * r), 0.7 * v)
-            put(t0 + 0.03, pitch(pick(rng, GLASS_L), 1.5 * r), 0.35 * v)
-            put(t0, ice_crackle(rng, 0.3, 0.6 * v))
+            # swell in, hard crack, deep thump, crystal ring
+            sw = swell(pitch(pick(rng, GLASS_M), 0.8 * r), 0.18)
+            put(t0 - 0.18, sw, 0.5 * v)
+            put(t0, pitch(pick(rng, GLASS_H), 1.25 * r), 0.9 * v)
+            put(t0, pitch(sample("soft_heavy"), 0.85), 0.9 * v)
+            put(t0, pitch(pick(rng, PUNCH), 0.8 * r), 0.6 * v)
+            put(t0 + 0.01, chime(2.0 * r, 0.5), 0.3 * v)
         elif kind == "el_icebreak":
-            put(t0, pitch(pick(rng, GLASS_H), 0.9 * r), 0.9 * v)
-            put(t0 + 0.04, pitch(pick(rng, GLASS_M), 1.1 * r), 0.6 * v)
-            put(t0, pitch(pick(rng, PUNCH), 1.0), 0.5 * v)
+            put(t0, pitch(pick(rng, GLASS_H), 0.62 * r), 1.0 * v)
+            put(t0, pitch(pick(rng, GLASS_H), 1.0 * r), 0.9 * v)
+            put(t0, pitch(pick(rng, PUNCH), 0.6), 0.9 * v)
+            put(t0, ground(rng, 0.7 * v))
+            for dl in (0.09, 0.19, 0.33, 0.5):   # pieces raining down
+                put(t0 + dl * rng.uniform(0.8, 1.2),
+                    pitch(pick(rng, GLASS_L + GLASS_M), rng.uniform(1.0, 1.6)), 0.35 * v)
         elif kind == "el_shard":
-            put(t0 - 0.02, pitch(pick(rng, SWISH), 1.7 * r), 0.7 * v)
-            put(t0, ice_crackle(rng, 0.12, 0.4 * v))
+            put(t0 - 0.02, pitch(pick(rng, SWISH), 1.35 * r), 0.9 * v)
+            put(t0 - 0.02, pitch(pick(rng, HEAVY_SW), 1.3 * r), 0.4 * v)
+            put(t0, chime(3.0 * r, 0.25), 0.3 * v)
         elif kind == "el_icehit":
-            put(t0, pitch(pick(rng, GLASS_L), 1.1 * r), 0.8 * v)
-            put(t0, pitch(pick(rng, PUNCH), 1.1 * r), 0.7 * v)
+            put(t0, pitch(pick(rng, PUNCH), 0.85 * r), 1.0 * v)
+            put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.9 * r), 0.6 * v)
+            put(t0, pitch(pick(rng, GLASS_H), 1.15 * r), 0.8 * v)
+            put(t0 + 0.06, pitch(pick(rng, GLASS_L), 1.4 * r), 0.3 * v)
         elif kind == "el_steam":
             n = int(0.9 * SR)
             tt = np.arange(n) / SR
             put(t0, hp(rng.standard_normal(n), 3500) * np.exp(-4 * tt) * 0.35 * v)
-        elif kind in ("el_freeze", "el_frost"):
+        elif kind == "el_frost":
             d_ = max(0.1, kw.get("dur", 0.5))
-            put(t0, ice_crackle(rng, d_ + 0.15, 0.8 * v))
-            if kind == "el_freeze":
-                put(t0 + d_ * 0.5, pitch(pick(rng, MINING), 0.9), 0.7 * v)
-                put(t0 + d_, pitch(pick(rng, GLASS_M), 0.7), 0.8 * v)
+            put(t0, icy_wind(rng, d_ + 0.25, 0.7 * v))
+            for i in range(max(1, int(d_ * 9))):
+                put(t0 + rng.uniform(0, d_), pitch(pick(rng, GLASS_L), rng.uniform(1.5, 2.2)),
+                    0.18 * v)
+        elif kind == "el_freeze":
+            d_ = max(0.1, kw.get("dur", 0.5))
+            put(t0, icy_wind(rng, d_ + 0.1, 1.0 * v, rise=True))
+            put(t0, swell(chime(1.5, 1.2), d_), 0.6 * v)
+            for i in range(6):
+                put(t0 + d_ * i / 6, pitch(pick(rng, GLASS_M), 1.2 + 0.1 * i), 0.3 * v)
+            # locked solid: heavy crack with a long cold ring
+            put(t0 + d_, pitch(pick(rng, GLASS_H), 0.6), 1.0 * v)
+            put(t0 + d_, pitch(sample("soft_heavy"), 0.7), 1.0 * v)
+            put(t0 + d_, pitch(pick(rng, PUNCH), 0.65), 0.9 * v)
+            put(t0 + d_, chime(0.75, 1.8), 0.5 * v)
+            put(t0 + d_, chime(1.5, 1.2), 0.3 * v)
         elif kind == "el_rumble":
             d_ = kw.get("dur", 1.0)
             tt = _t(d_)
             put(t0, lp(rng.standard_normal(len(tt)), 120) * (tt / d_) ** 1.5 * 2.2 * v)
-            put(t0, ice_crackle(rng, d_, 0.45 * v))
+            for i in range(int(d_ * 7)):     # cracks coming faster and louder
+                u = (i / max(1, int(d_ * 7) - 1)) ** 0.7
+                put(t0 + d_ * u, pitch(pick(rng, GLASS_M + GLASS_H), rng.uniform(0.9, 1.4)),
+                    (0.2 + 0.5 * u) * v)
             put(t0, riser(rng, d_) * 0.8)
     out = out[:int(dur * SR)]
     out /= max(1e-6, np.abs(out).max()) / 0.9

@@ -23,7 +23,7 @@ def shift(S, P, ev, t_from, dt):
         tr.facing_keys = [(t + dt if t >= t_from else t, f) for t, f in tr.facing_keys]
     for i, (t, k, kw) in enumerate(ev):
         kw = dict(kw)
-        for key in ("a0", "a1", "until"):
+        for key in ("a0", "a1", "until", "t1", "break_t", "glow_t"):
             if key in kw and kw[key] >= t_from:
                 kw[key] += dt
         ev[i] = (t + dt if t >= t_from else t, k, kw)
