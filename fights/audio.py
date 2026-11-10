@@ -155,6 +155,33 @@ def riser(rng, dur):
     return s * 0.3
 
 
+def fire_roar(rng, dur, v=1.0, burst=False):
+    """Low rumbling whoosh of flame."""
+    t = _t(dur)
+    n = rng.standard_normal(len(t))
+    s = lp(n, 420) * 1.6 + bp(n, 500, 1800) * 0.35
+    flutter = 0.7 + 0.3 * np.sin(2 * np.pi * 13 * t + rng.uniform(0, 6)) * np.sin(2 * np.pi * 5 * t)
+    if burst:
+        env = np.exp(-4.5 * t / max(0.3, dur) * 1.0) * np.minimum(1, t / 0.008)
+    else:
+        env = np.sin(np.pi * np.minimum(1, t / dur)) ** 0.6
+    return s * flutter * env * 0.5 * v
+
+
+def ice_crackle(rng, dur, v=1.0):
+    """Sparse sharp ticks, like ice creeping and cracking."""
+    n = int(dur * SR)
+    out = np.zeros(n + 2000)
+    k = max(3, int(dur * 45))
+    tick = _t(0.03)
+    for i in rng.integers(0, n, k):
+        f = rng.uniform(2500, 7000)
+        s = np.sin(2 * np.pi * f * tick) * np.exp(-220 * tick) * rng.uniform(0.3, 1.0)
+        out[i:i + len(s)] += s[:len(out) - i]
+    out += hp(rng.standard_normal(len(out)), 5000) * 0.05
+    return out[:n] * 0.5 * v
+
+
 SFX_DIR = __import__("os").path.join(__import__("os").path.dirname(__file__), "sfx")
 _CACHE = {}
 
@@ -205,6 +232,10 @@ def mix(cues, dur, seed=7):
     HEAVY_SW = ["swoosh_heavy_1", "swoosh_heavy_2"]
     PUNCH = ["punch_heavy_0", "punch_heavy_1", "punch_heavy_2"]
     STEPS = ["step_0", "step_1", "step_2"]
+    GLASS_H = ["glass_heavy_0", "glass_heavy_1", "glass_heavy_2"]
+    GLASS_M = ["glass_medium_0", "glass_medium_1"]
+    GLASS_L = ["glass_light_0", "glass_light_1"]
+    MINING = ["mining_0", "mining_1"]
     for t0, kind, kw in cues:
         v = kw.get("v", 1.0)
         r = rng.uniform(0.94, 1.06)
@@ -275,6 +306,49 @@ def mix(cues, dur, seed=7):
             put(t0, iai(rng, v))
         elif kind == "riser":
             put(t0, riser(rng, kw["dur"]))
+        elif kind == "el_fireball":
+            put(t0 - 0.03, pitch(pick(rng, HEAVY_SW), 0.6 * r), 0.8 * v)
+            put(t0, fire_roar(rng, 0.35, 0.7 * v))
+        elif kind == "el_firehit":
+            put(t0, pitch(pick(rng, PUNCH), 0.75 * r), 0.9 * v)
+            put(t0, fire_roar(rng, 0.45, 0.9 * v, burst=True))
+        elif kind == "el_explode":
+            put(t0, pitch(sample("soft_heavy"), 0.7), 1.0 * v)
+            put(t0, pitch(pick(rng, PUNCH), 0.6), 1.0 * v)
+            put(t0, ground(rng, 1.4 * v))
+            put(t0, fire_roar(rng, 1.4, 1.2 * v, burst=True))
+        elif kind == "el_roar":
+            put(t0, fire_roar(rng, kw.get("dur", 1.0), 0.6 * v))
+        elif kind == "el_iceform":
+            put(t0, pitch(pick(rng, MINING), 1.25 * r), 0.7 * v)
+            put(t0 + 0.03, pitch(pick(rng, GLASS_L), 1.5 * r), 0.35 * v)
+            put(t0, ice_crackle(rng, 0.3, 0.6 * v))
+        elif kind == "el_icebreak":
+            put(t0, pitch(pick(rng, GLASS_H), 0.9 * r), 0.9 * v)
+            put(t0 + 0.04, pitch(pick(rng, GLASS_M), 1.1 * r), 0.6 * v)
+            put(t0, pitch(pick(rng, PUNCH), 1.0), 0.5 * v)
+        elif kind == "el_shard":
+            put(t0 - 0.02, pitch(pick(rng, SWISH), 1.7 * r), 0.7 * v)
+            put(t0, ice_crackle(rng, 0.12, 0.4 * v))
+        elif kind == "el_icehit":
+            put(t0, pitch(pick(rng, GLASS_L), 1.1 * r), 0.8 * v)
+            put(t0, pitch(pick(rng, PUNCH), 1.1 * r), 0.7 * v)
+        elif kind == "el_steam":
+            n = int(0.9 * SR)
+            tt = np.arange(n) / SR
+            put(t0, hp(rng.standard_normal(n), 3500) * np.exp(-4 * tt) * 0.35 * v)
+        elif kind in ("el_freeze", "el_frost"):
+            d_ = max(0.1, kw.get("dur", 0.5))
+            put(t0, ice_crackle(rng, d_ + 0.15, 0.8 * v))
+            if kind == "el_freeze":
+                put(t0 + d_ * 0.5, pitch(pick(rng, MINING), 0.9), 0.7 * v)
+                put(t0 + d_, pitch(pick(rng, GLASS_M), 0.7), 0.8 * v)
+        elif kind == "el_rumble":
+            d_ = kw.get("dur", 1.0)
+            tt = _t(d_)
+            put(t0, lp(rng.standard_normal(len(tt)), 120) * (tt / d_) ** 1.5 * 2.2 * v)
+            put(t0, ice_crackle(rng, d_, 0.45 * v))
+            put(t0, riser(rng, d_) * 0.8)
     out = out[:int(dur * SR)]
     out /= max(1e-6, np.abs(out).max()) / 0.9
     return np.stack([out, out], axis=1).astype(np.float32)

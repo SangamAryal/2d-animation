@@ -155,7 +155,7 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         ex, ey = hx + J["facing"] * 0 + (d(a + 90)[0] * J["facing"]) * R * 0.45 + ux * R * 0.15, \
             hy + d(a + 90)[1] * R * 0.45 + uy * R * 0.15
         c.drawCircle(ex, ey, 2.2 * S, fill(col(flat or style["eye"], alpha)))
-    if p["sheath"] < 0.5:
+    if p["sheath"] < 0.5 and not style.get("unarmed"):
         draw_sword(c, J, flat or style["steel"], flat or "#222222", alpha,
                    p.get("broken", 0), style.get("sword", "katana"))
     polyline(c, [J["sho"], J["elf"], J["haf"]], pf)

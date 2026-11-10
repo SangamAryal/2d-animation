@@ -17,12 +17,13 @@ import skia
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import audio  # noqa: E402
+import elements  # noqa: E402
 from draw import col, draw_fighter, fill, stroke, polyline  # noqa: E402
 from rig import R_HEAD, solve  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"patience": "choreo", "power": "choreo_power"}
+FIGHTS = {"patience": "choreo", "power": "choreo_power", "fire": "choreo_fire"}
 
 
 def typeface(weight="ExtraBold"):
@@ -135,9 +136,13 @@ class Renderer:
         self.decaps = []     # (t, who, J_victim, J_attacker)
         self.banners = []    # (vt, text)
         self.hp = f.hp
+        self.el = []         # elemental effects (elements.py)
+        self.el_marks = {}
         for t, k, kw in f.ev:
             vt = video_time(self.frames, t)
             seed = len(self.fx)
+            if elements.prepare(self, t, vt, k, kw):
+                continue
             if k == "clash":
                 a, b = f.joints(f.ids[0], t), f.joints(f.ids[1], t)
                 pt = seg_closest(a["guard"], a["tip"], b["guard"], b["tip"])
@@ -239,6 +244,8 @@ class Renderer:
         skip = [self.iai_t] if self.iai_vt is not None else []
         for who in f.ids:
             st = f.tracks[who][1]
+            if st.get("unarmed"):
+                continue
             heavy = st.get("sword") == "cleaver"
             last = -9
             dt = 1 / 240
@@ -300,7 +307,7 @@ class Renderer:
             dt = vt - et
             if dt < 0 or dt > 1.0:
                 continue
-            m = {"clash": 8, "hit": 4, "slam": 34, "stomp": 7, "iai": 16}.get(k, 0)
+            m = {"clash": 8, "hit": 4, "slam": 34, "stomp": 7, "iai": 16, "boom": 22}.get(k, 0)
             m *= d.get("v", 1.0) * (2.0 if d.get("big") else 1.0)
             if m == 0:
                 continue
@@ -828,7 +835,7 @@ class Renderer:
         mode = "normal"
         for et, k, d in self.fx:
             dtf = (vt - et) * FPS
-            if (k in ("clash", "hit", "decap") and d.get("big") or k == "slam") and 0 <= dtf < 3:
+            if (k in ("clash", "hit", "decap", "boom") and d.get("big") or k == "slam") and 0 <= dtf < 3:
                 mode = "invert"
             if k == "iai":
                 if 0 <= dtf < 3:
@@ -861,29 +868,37 @@ class Renderer:
         if not flat:
             for who in f.ids:
                 J = f.joints(who, t)
+                if J["p"].get("hidden"):
+                    continue
                 S = J["size"]
                 h = J["hip"][1]
                 sa = max(0.0, 0.28 - h / 900)
                 c.drawOval(skia.Rect(J["hip"][0] - 34 * S, -5, J["hip"][0] + 34 * S, 5),
                            fill(col("#3a2e22", sa)))
         self.draw_craters(c, vt, flat)
+        elements.draw_ground(self, c, t, flat)
+        elements.draw_back(self, c, t, flat)
         for who in f.ids:
             tr, style = f.tracks[who]
+            if f.joints(who, t)["p"].get("hidden"):
+                continue
             if not flat and style.get("fast"):
                 self.speed_lines(c, who, t, style["ghost"])
             self.ghosts(c, who, t, style, flat or style.get("ghost", "#888888"))
             J = f.joints(who, t)
             tails = self.tails(who, t) if style.get("band") else None
             draw_fighter(c, J, style, flat=flat, tails=tails)
+            elements.decorate(self, c, who, J, style, t, flat)
             if not flat:
                 self.draw_wounds(c, who, J, vt, flat)
-            if J["p"]["sheath"] < 0.5:
+            if J["p"]["sheath"] < 0.5 and not style.get("unarmed"):
                 self.blade_trail(c, who, t, "#ffffff" if flat else style.get("trail", "#ffffff"))
         self.broken_pieces(c, t, flat)
         self.head_piece(c, t, flat)
         self.neck_fountain(c, t, "#f4f1ea" if flat else None)
         self.draw_blood(c, vt, "#f4f1ea" if flat else None)
         self.draw_fx(c, vt)
+        elements.draw_front(self, c, t, flat)
         c.restore()
 
         if mode == "slash":

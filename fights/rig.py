@@ -19,10 +19,10 @@ FOOT_R = 4.0
 # Pose keys that are angles (interpolated linearly), and scalar keys.
 ANGLE_KEYS = ["T", "H", "uaf", "faf", "uab", "fab", "thf", "shf", "thb", "shb", "sw"]
 SCALAR_KEYS = ["grip", "air", "dy", "rot"]
-STEP_KEYS = ["sheath", "broken", "headless"]
+STEP_KEYS = ["sheath", "broken", "headless", "hidden"]
 
 BASE = dict(T=0, H=0, uaf=175, faf=165, uab=185, fab=190, thf=170, shf=180,
-            thb=192, shb=182, sw=120, grip=0, air=0, dy=0, rot=0, sheath=0, broken=0, headless=0)
+            thb=192, shb=182, sw=120, grip=0, air=0, dy=0, rot=0, sheath=0, broken=0, headless=0, hidden=0)
 
 
 def d(a):
@@ -278,3 +278,39 @@ pose("sweep", T=22, H=14, uaf=95, faf=85, sw=82, grip=1,
 pose("tumble", T=0, H=0, uaf=60, faf=30, uab=-70, fab=-40, sw=20, grip=0,
      thf=135, shf=110, thb=225, shb=250)
 pose("broken_look", "iai_hold", H=55, T=24, broken=1)
+
+
+# ---------------------------------------------------------------- unarmed (fire vs ice)
+pose("fist_guard", T=8, H=6, uaf=120, faf=40, uab=150, fab=50,
+     thf=150, shf=185, thb=205, shb=195)
+pose("stroll1", T=4, H=2, uaf=200, faf=175, uab=155, fab=130,
+     thf=150, shf=185, thb=205, shb=215)
+pose("stroll2", "stroll1", uaf=155, faf=130, uab=200, fab=178,
+     thf=200, shf=190, thb=160, shb=176)
+pose("idle", T=2, H=0, uaf=168, faf=150, uab=190, fab=175, thf=165, shf=180, thb=195, shb=184)
+pose("throw_wind", T=-12, H=0, uaf=250, faf=330, uab=105, fab=80,
+     thf=150, shf=180, thb=210, shb=195)
+pose("throw", T=26, H=18, uaf=85, faf=88, uab=215, fab=230,
+     thf=125, shf=180, thb=232, shb=215)
+pose("cast2", T=14, H=8, uaf=82, faf=86, uab=96, fab=92,
+     thf=135, shf=180, thb=225, shb=205)
+pose("raise", T=-4, H=-12, uaf=10, faf=-8, uab=-10, fab=8,
+     thf=158, shf=180, thb=202, shb=186)
+pose("palm_ground", T=58, H=42, uaf=142, faf=168, uab=200, fab=185,
+     thf=95, shf=185, thb=150, shb=265)
+pose("stomp_wind", T=-8, H=-4, uaf=25, faf=-10, uab=-25, fab=10,
+     thf=78, shf=178, thb=186, shb=182)
+pose("stomp", T=22, H=14, uaf=140, faf=120, uab=215, fab=200,
+     thf=128, shf=180, thb=218, shb=200)
+pose("upper_wind", T=36, H=25, uaf=205, faf=140, uab=160, fab=60,
+     thf=115, shf=180, thb=235, shb=225)
+pose("upper", T=-12, H=-16, uaf=28, faf=4, uab=200, fab=232,
+     thf=160, shf=180, thb=200, shb=190)
+pose("power", T=-6, H=-14, uaf=128, faf=55, uab=232, fab=305,
+     thf=140, shf=185, thb=220, shb=195)
+pose("slide", T=-22, H=-4, uaf=205, faf=185, uab=232, fab=250,
+     thf=108, shf=112, thb=232, shb=200)
+pose("meteor", T=62, H=42, uaf=128, faf=132, uab=242, fab=272,
+     thf=150, shf=232, thb=240, shb=262)
+pose("flip", T=20, H=10, uaf=120, faf=60, uab=150, fab=70,
+     thf=100, shf=210, thb=140, shb=230)
