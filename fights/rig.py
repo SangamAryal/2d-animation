@@ -322,3 +322,5 @@ pose("swalk1", "walk1", sheath=1, uaf=165, faf=95, uab=180, fab=110, grip=0)
 pose("swalk2", "walk2", sheath=1, uaf=165, faf=95, uab=180, fab=110, grip=0)
 pose("taunt", T=-10, H=-16, uaf=200, faf=175, sw=200, grip=0, uab=150, fab=60,
      thf=158, shf=182, thb=202, shb=186)
+pose("back_thrust", T=14, H=2, uaf=218, faf=258, sw=268, grip=0, uab=150, fab=80,
+     thf=140, shf=182, thb=215, shb=200)

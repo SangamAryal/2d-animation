@@ -7,13 +7,14 @@ The third stop is cast from too far away: the two seconds run out a step
 short, and the quick-draw he already saw finishes it.
 Original characters; only the general idea of a time stop is used.
 """
+from choreo_power import shift
 from rig import Track
 
-STOP = dict(name="TIME STOP", body="#2b2140", back="#5c4d80", band="#f2c14e",
-            steel="#eef0f7", ghost="#9b7bff", trail="#efe3ff", accent="#7a5ad8")
-SIGHT = dict(name="FUTURE SIGHT", body="#14595f", back="#3f8a90", hat="#d9b26a",
-             eye="#7ff7ff", scabbard=True, scab="#2c3e44", steel="#eef7f8",
-             ghost="#7ff7ff", trail="#dffcff", accent="#1d9aa3")
+STOP = dict(name="TIME STOP", body="#e6dcff", back="#9a8bd0", band="#f2c14e",
+            steel="#ffffff", ghost="#9b7bff", trail="#efe3ff", accent="#a98bff")
+SIGHT = dict(name="FUTURE SIGHT", body="#a8f3e8", back="#55a79e", hat="#e3bd72",
+             eye="#0b3b40", scabbard=True, scab="#3f6b70", steel="#ffffff",
+             ghost="#7ff7ff", trail="#dffcff", accent="#3fd6c8")
 TITLE = (("TIME STOP", STOP["accent"]), ("FUTURE SIGHT", SIGHT["accent"]))
 
 
@@ -129,26 +130,15 @@ def build():
     F.face(12.35, 1)
     F.key(12.6, "guard_low", -10, "io")
     F.key(12.9, "guard_low", -10)
-    E(12.85, "vision", who="F", on="T", dur=0.40, lead=0.45)
-    T.key(12.95, "guard", 220, "io")
-    T.key(13.25, "tcast", 220, "out")     # would freeze time at ~13.35
-    F.key(12.98, "crouch", -5, "io")
-    F.key(13.06, "dash", 60, "snap")
-    F.key(13.18, "dash", 110, "lin")
-    E(13.04, "zip", v=0.9)
-    F.key(13.24, "side_cut", 135, "snap")
-    E(13.24, "tbreak", who="T")
-    E(13.24, "hit", by="F", on="T", v=1.0, dmg=25, big=True)
-    E(13.24, "hitstop", dur=0.14)
-    T.key(13.26, "recoil", 260, "snap")
-    T.key(13.55, "tumble", 380, "out", air=70, rot=200)
+    T.key(13.26, "recoil", 130, "snap")
+    T.key(13.55, "tumble", 300, "out", air=70, rot=200)
     T.key(13.80, "stagger", 470, "in", rot=360)
     T.key(13.801, "stagger", 470, rot=0)
     E(13.80, "skid", x=470, v=0.9)
     T.key(14.2, "guard_low", 480, "io")
     # space opens up: he walks back and sheathes
-    F.key(13.6, "side_cut", 135)
-    F.key(13.9, "guard", 120, "io")
+    F.key(13.6, "side_cut", 35)
+    F.key(13.9, "guard", 45, "io")
     F.key(14.4, "guard", 30, "io")
     F.key(14.75, "sheathing", 10, "io")
     F.key(15.0, "iai", 0, "snap", sheath=1)
@@ -200,6 +190,33 @@ def build():
     end = t_cut + 4.3
     F.key(end, "stand_sheathed", tx + 182)
     T.key(end, "fallen", tx - 50, headless=1)
+    # ---------------- TIME STOP #2 (inserted): he has already seen where the
+    # stopper will stand, and leaves his blade pointing there
+    D = 2.14
+    shift(T, F, ev, 13.25, D)
+    end += D
+    E(12.85, "vision", who="F", on="T", dur=0.45, lead=1.55)
+    F.key(13.10, "guard_low", -10)
+    F.key(13.26, "back_thrust", -10, "snap")
+    F.key(15.30, "back_thrust", -10)
+    T.key(12.95, "guard", 220, "io")
+    T.key(13.28, "tcast", 220, "out")
+    E(13.30, "tstop", who="T", dur=2.0, windup=0.32)
+    T.key(13.50, "guard", 220, "io")
+    walk(T, "walk1", "walk2", 13.55, 14.35, 220, -185, 0.2, "T")
+    T.face(14.38, 1)
+    T.key(14.40, "guard", -185, "snap")
+    T.key(14.52, "recoil", -205, "out")      # the blade is already waiting for him
+    E(14.50, "heart", v=1.0)
+    T.key(14.68, "guard", -198, "io")
+    walk(T, "run1_g", "run2_g", 14.72, 15.12, -198, 88, 0.1, "T")
+    T.face(15.14, -1)
+    T.key(15.16, "guard", 90, "snap")
+    T.key(15.29, "high_wind", 86, "out")
+    # out of time: the cut he prepared lands first
+    F.key(15.38, "side_cut", 22, "snap")
+    E(15.38, "hit", by="F", on="T", v=1.0, dmg=25, big=True)
+    E(15.38, "hitstop", dur=0.14)
     return dict(fighters=[("T", T, STOP), ("F", F, SIGHT)], events=ev, end=end,
                 hp=[("T", STOP["name"], STOP["accent"]), ("F", SIGHT["name"], SIGHT["accent"])],
-                title=TITLE)
+                title=TITLE, theme="night")

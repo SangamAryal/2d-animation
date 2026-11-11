@@ -43,10 +43,11 @@ def prepare(r, t, vt, k, kw):
         r.tstops_vt.append((vt, video_time(r.frames, t1)))
         r.cues.append((video_time(r.frames, t - w), "tstop_wind", dict(dur=vt - video_time(r.frames, t - w))))
         r.cues.append((vt, "tstop", {}))
-        tt = t + 0.25
-        while tt < t1 - 0.05:
-            r.cues.append((video_time(r.frames, tt), "tick", dict(v=1.0 if tt > t1 - 0.6 else 0.7)))
+        tt, i = t + 0.5, 0
+        while tt < t1 - 0.05:      # one tick-tock per half second of stopped time
+            r.cues.append((video_time(r.frames, tt), "tick", dict(v=1.0, i=i)))
             tt += 0.25
+            i += 1
         r.cues.append((video_time(r.frames, t1), "tresume", {}))
     elif k == "tbreak":
         r.tbreaks.append((t, kw["who"]))

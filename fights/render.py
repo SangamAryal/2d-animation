@@ -90,6 +90,7 @@ class Fight:
         self.end = d["end"]
         self.title = d["title"]
         self.hp = d.get("hp", [])
+        self.theme = d.get("theme", "day")
         self.tracks = {i: (tr, st) for i, tr, st in self.fighters}
         self.ids = [i for i, _, _ in self.fighters]
 
@@ -324,7 +325,57 @@ class Renderer:
         return sx * self.s, sy * self.s, punch
 
     # ---------------------------------------------------- background
+    def background_night(self, c, cx, z, dark):
+        """Moonlit courtyard: deep blue sky, stars, big pale moon, dark hills."""
+        W, H, gy, s = self.W, self.H, self.gy, self.s
+        sky = skia.Paint()
+        sky.setShader(skia.GradientShader.MakeLinear(
+            [(0, 0), (0, gy)], [col("#0b0d26").toColor(), col("#2c2a5e").toColor()]))
+        c.drawRect(skia.Rect(0, 0, W, gy), sky)
+        rng = np.random.default_rng(4)
+        for i in range(90):
+            x = (rng.uniform(0, W * 1.3) - cx * 0.03 * s) % W
+            y = rng.uniform(0, gy * 0.9)
+            c.drawCircle(x, y, rng.uniform(0.8, 2.4) * s, fill(col("#ffffff", rng.uniform(0.3, 0.9))))
+        mx = W * 0.62 - cx * 0.06 * s
+        my = gy - (0.34 if self.wide else 0.25) * H
+        R = 0.24 * min(W, H)
+        c.drawCircle(mx, my, R * 1.5, fill(col("#b9b6ff", 0.10)))
+        c.drawCircle(mx, my, R * 1.2, fill(col("#d8d4ff", 0.12)))
+        c.drawCircle(mx, my, R, fill(col("#f4efd8")))
+        c.drawCircle(mx - R * 0.3, my - R * 0.2, R * 0.16, fill(col("#e2dcc0", 0.7)))
+        c.drawCircle(mx + R * 0.25, my + R * 0.3, R * 0.22, fill(col("#e2dcc0", 0.6)))
+        for layer, (par, amp, color) in enumerate(((0.12, 2.3, "#1d1c47"), (0.25, 1.4, "#14132f"))):
+            path = skia.Path()
+            path.moveTo(0, gy)
+            for i in range(0, W + 20, 20):
+                wx = (i - W / 2) / (par * z) + cx * par + layer * 900
+                h = 46 + 28 * math.sin(wx * 0.004) + 16 * math.sin(wx * 0.011 + 1) \
+                    + 8 * math.sin(wx * 0.031)
+                path.lineTo(i, gy - h * s * amp)
+            path.lineTo(W, gy)
+            path.close()
+            c.drawPath(path, fill(col(color)))
+        fl = skia.Paint()
+        fl.setShader(skia.GradientShader.MakeLinear(
+            [(0, gy), (0, H)], [col("#34305f").toColor(), col("#17152e").toColor()]))
+        c.drawRect(skia.Rect(0, gy, W, H), fl)
+        lp = stroke(col("#6d68a8", 0.45), 2 * s)
+        step = 140
+        k0 = int((cx - W / z) // step) - 2
+        for k in range(k0, k0 + int(2 * W / z / step) + 6):
+            sx = W / 2 + (k * step - cx) * z
+            c.drawLine(sx, gy, W / 2 + (sx - W / 2) * 3.2, H, lp)
+        for j in range(1, 6):
+            yy = gy + (H - gy) * (j / 6) ** 1.6
+            c.drawLine(0, yy, W, yy, stroke(col("#6d68a8", 0.3), 1.5 * s))
+        c.drawLine(0, gy, W, gy, stroke(col("#c9c4ff"), 3.5 * s))
+        if dark > 0:
+            c.drawRect(skia.Rect(0, 0, W, H), fill(col("#050410", dark)))
+
     def background(self, c, cx, z, dark):
+        if self.f.theme == "night":
+            return self.background_night(c, cx, z, dark)
         W, H, gy = self.W, self.H, self.gy
         sky = skia.Paint()
         sky.setShader(skia.GradientShader.MakeLinear(
@@ -972,7 +1023,7 @@ class Renderer:
             wl, wr = fb.measureText(left), fb.measureText(right)
         x0 = W / 2 - (wl + gap + wr) / 2
         c.drawString(left, x0, top, fb, fill(col(lc, a)))
-        c.drawString(" vs ", x0 + wl, top, fb, fill(col("#7d6f60", a)))
+        c.drawString(" vs ", x0 + wl, top, fb, fill(col("#b9b3d6" if self.f.theme == "night" else "#7d6f60", a)))
         c.drawString(right, x0 + wl + gap, top, fb, fill(col(rc, a)))
         self.draw_hp(c, vt)
         for bt, text in self.banners:

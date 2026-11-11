@@ -168,6 +168,44 @@ def fire_roar(rng, dur, v=1.0, burst=False):
     return s * flutter * env * 0.5 * v
 
 
+def clock_tick(hi=True):
+    """One beat of a mechanical clock: sharp click with a small wooden body."""
+    t = _t(0.09)
+    f = 2300 if hi else 1500
+    rng = np.random.default_rng(1 if hi else 2)
+    click = hp(rng.standard_normal(len(t)), 1800) * np.exp(-260 * t)
+    body = np.sin(2 * np.pi * f * t) * np.exp(-70 * t) * 0.8
+    wood = np.sin(2 * np.pi * f * 0.31 * t) * np.exp(-45 * t) * 0.5
+    return (click + body + wood) * 0.7
+
+
+def power_sweep(dur, f0, f1):
+    """Pitch gliding from f0 to f1: a machine winding down (or back up)."""
+    t = _t(dur)
+    u = t / dur
+    f = f0 * (f1 / f0) ** u
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    s = np.sin(ph) + 0.5 * np.sin(2 * ph) + 0.3 * np.sin(3 * ph) + 0.2 * np.sign(np.sin(ph))
+    env = np.minimum(1, t / 0.01) * (1 - u) ** 0.5 if f1 < f0 else u ** 1.2
+    wob = 1 + 0.15 * np.sin(2 * np.pi * 9 * t)
+    return s * env * wob * 0.45
+
+
+def stop_drone(dur):
+    """Low hollow hum for the frozen world."""
+    t = _t(dur)
+    s = np.sin(2 * np.pi * 55 * t) + 0.5 * np.sin(2 * np.pi * 82.5 * t + 1) \
+        + 0.25 * np.sin(2 * np.pi * 110.3 * t)
+    env = np.minimum(1, t / 0.25) * np.minimum(1, (dur - t) / 0.2)
+    return s * env * 0.35
+
+
+def sonar_ping(f):
+    t = _t(0.5)
+    return (np.sin(2 * np.pi * f * t) + 0.3 * np.sin(2 * np.pi * f * 2.01 * t)) \
+        * np.exp(-9 * t) * np.minimum(1, t / 0.004) * 0.5
+
+
 def icy_wind(rng, dur, v=1.0, rise=False):
     """Cold airy rush for frost creeping over the ground."""
     t = _t(dur)
@@ -317,31 +355,46 @@ def mix(cues, dur, seed=7):
         elif kind == "riser":
             put(t0, riser(rng, kw["dur"]))
         elif kind == "tstop_wind":
-            # the world being pulled in: reversed bell swelling to the stop
+            # a clock winding up fast, pulled into the stop
             d_ = max(0.15, kw.get("dur", 0.35))
-            put(t0, swell(pitch(sample("bell_heavy"), 0.55), d_), 0.9)
-            put(t0, riser(rng, d_) * 0.6)
+            for i in range(6):
+                u = i / 6
+                put(t0 + d_ * u ** 0.6, clock_tick(i % 2 == 0), 0.5 + 0.4 * u)
+            put(t0, swell(pitch(sample("bell_heavy"), 0.55), d_), 0.8)
         elif kind == "tstop":
+            # everything powers down: falling "tape stop" sweep into a deep toll
+            put(t0, power_sweep(0.75, 520, 38), 1.0)
             put(t0, pitch(sample("soft_heavy"), 0.5), 1.0)
-            put(t0, pitch(sample("bell_heavy"), 0.5), 0.8)
-            put(t0, pitch(sample("bell_heavy"), 1.0), 0.3)
-            put(t0, pitch(pick(rng, GLASS_L), 0.7), 0.4)
-            put(t0, ground(rng, 0.5))
+            put(t0, pitch(sample("bell_heavy"), 0.42), 0.9)
+            put(t0, ground(rng, 0.6))
+            put(t0 + 0.35, stop_drone(1.55), 0.5)
         elif kind == "tick":
-            put(t0, pitch(sample("metal_click"), 1.5 * r), 0.55 * v)
+            # loud lone clock in the silence: tick ... tock
+            tk = clock_tick(kw.get("i", 0) % 2 == 0)
+            put(t0, tk, 1.0 * v)
+            put(t0 + 0.07, tk, 0.25 * v)     # room echo
+            put(t0 + 0.14, tk, 0.10 * v)
         elif kind == "tresume":
+            put(t0 - 0.28, power_sweep(0.28, 60, 700), 0.9)
             put(t0 - 0.12, swell(pitch(pick(rng, HEAVY_SW), 0.8), 0.12), 0.8)
-            put(t0, pitch(sample("bell_heavy"), 0.75), 0.6)
+            put(t0, pitch(sample("bell_heavy"), 0.84), 0.6)
             put(t0, pitch(pick(rng, PUNCH), 0.7), 0.7)
+            for i in range(5):                # the clock catches up
+                put(t0 + 0.05 + i * 0.07, clock_tick(i % 2 == 0), 0.5 - i * 0.08)
         elif kind == "tbreak":
             put(t0, pitch(pick(rng, GLASS_H), 0.8), 1.0)
             put(t0, pitch(pick(rng, GLASS_M), 1.2), 0.6)
             put(t0, pitch(sample("bell_heavy"), 1.4)[:int(0.4 * SR)], 0.5)
         elif kind == "vision":
+            # premonition: a reversed swell into a sonar ping with fading echoes
             d_ = kw.get("dur", 0.4)
-            put(t0, chime(2.4, 0.9), 0.35)
-            put(t0, swell(chime(3.2, 0.6), min(0.3, d_)), 0.3)
-            put(t0, icy_wind(rng, d_ + 0.3, 0.5))
+            put(t0 - 0.22, swell(chime(1.8, 0.8), 0.22), 0.55)
+            pg = sonar_ping(1568)
+            for i, g_ in enumerate((0.8, 0.42, 0.22, 0.11, 0.05)):
+                put(t0 + i * 0.13, pg, g_)
+            put(t0, sonar_ping(2349), 0.25)
+            put(t0, heart(rng, 0.9))
+            put(t0, icy_wind(rng, d_ + 0.3, 0.35))
         elif kind == "el_fireball":
             put(t0 - 0.03, pitch(pick(rng, HEAVY_SW), 0.6 * r), 0.8 * v)
             put(t0, fire_roar(rng, 0.35, 0.7 * v))
