@@ -316,6 +316,32 @@ def mix(cues, dur, seed=7):
             put(t0, iai(rng, v))
         elif kind == "riser":
             put(t0, riser(rng, kw["dur"]))
+        elif kind == "tstop_wind":
+            # the world being pulled in: reversed bell swelling to the stop
+            d_ = max(0.15, kw.get("dur", 0.35))
+            put(t0, swell(pitch(sample("bell_heavy"), 0.55), d_), 0.9)
+            put(t0, riser(rng, d_) * 0.6)
+        elif kind == "tstop":
+            put(t0, pitch(sample("soft_heavy"), 0.5), 1.0)
+            put(t0, pitch(sample("bell_heavy"), 0.5), 0.8)
+            put(t0, pitch(sample("bell_heavy"), 1.0), 0.3)
+            put(t0, pitch(pick(rng, GLASS_L), 0.7), 0.4)
+            put(t0, ground(rng, 0.5))
+        elif kind == "tick":
+            put(t0, pitch(sample("metal_click"), 1.5 * r), 0.55 * v)
+        elif kind == "tresume":
+            put(t0 - 0.12, swell(pitch(pick(rng, HEAVY_SW), 0.8), 0.12), 0.8)
+            put(t0, pitch(sample("bell_heavy"), 0.75), 0.6)
+            put(t0, pitch(pick(rng, PUNCH), 0.7), 0.7)
+        elif kind == "tbreak":
+            put(t0, pitch(pick(rng, GLASS_H), 0.8), 1.0)
+            put(t0, pitch(pick(rng, GLASS_M), 1.2), 0.6)
+            put(t0, pitch(sample("bell_heavy"), 1.4)[:int(0.4 * SR)], 0.5)
+        elif kind == "vision":
+            d_ = kw.get("dur", 0.4)
+            put(t0, chime(2.4, 0.9), 0.35)
+            put(t0, swell(chime(3.2, 0.6), min(0.3, d_)), 0.3)
+            put(t0, icy_wind(rng, d_ + 0.3, 0.5))
         elif kind == "el_fireball":
             put(t0 - 0.03, pitch(pick(rng, HEAVY_SW), 0.6 * r), 0.8 * v)
             put(t0, fire_roar(rng, 0.35, 0.7 * v))

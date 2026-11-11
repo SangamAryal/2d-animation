@@ -314,3 +314,11 @@ pose("meteor", T=62, H=42, uaf=128, faf=132, uab=242, fab=272,
      thf=150, shf=232, thb=240, shb=262)
 pose("flip", T=20, H=10, uaf=120, faf=60, uab=150, fab=70,
      thf=100, shf=210, thb=140, shb=230)
+
+# ---------------------------------------------------------------- time stop vs future sight
+pose("tcast", T=-8, H=-10, uaf=172, faf=155, sw=168, grip=0, uab=50, fab=25,
+     thf=148, shf=186, thb=208, shb=195)
+pose("swalk1", "walk1", sheath=1, uaf=165, faf=95, uab=180, fab=110, grip=0)
+pose("swalk2", "walk2", sheath=1, uaf=165, faf=95, uab=180, fab=110, grip=0)
+pose("taunt", T=-10, H=-16, uaf=200, faf=175, sw=200, grip=0, uab=150, fab=60,
+     thf=158, shf=182, thb=202, shb=186)

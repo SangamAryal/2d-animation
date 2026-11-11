@@ -18,12 +18,13 @@ import skia
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import audio  # noqa: E402
 import elements  # noqa: E402
+import powers  # noqa: E402
 from draw import col, draw_fighter, fill, stroke, polyline  # noqa: E402
 from rig import R_HEAD, solve  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"patience": "choreo", "power": "choreo_power", "fire": "choreo_fire"}
+FIGHTS = {"patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time"}
 
 
 def typeface(weight="ExtraBold"):
@@ -138,10 +139,11 @@ class Renderer:
         self.hp = f.hp
         self.el = []         # elemental effects (elements.py)
         self.el_marks = {}
+        powers.init(self)
         for t, k, kw in f.ev:
             vt = video_time(self.frames, t)
             seed = len(self.fx)
-            if elements.prepare(self, t, vt, k, kw):
+            if elements.prepare(self, t, vt, k, kw) or powers.prepare(self, t, vt, k, kw):
                 continue
             if k == "clash":
                 a, b = f.joints(f.ids[0], t), f.joints(f.ids[1], t)
@@ -219,6 +221,7 @@ class Renderer:
                 if k == "charge":
                     self.cues.append((vt, "riser", dict(dur=kw["dur"])))
             self.cues.append((vt, k, kw))
+        powers.finish(self)
         self.auto_swooshes()
 
     def add_wound(self, vt, who, B, pt, seed):
@@ -303,8 +306,10 @@ class Renderer:
 
     def shake_punch(self, vt):
         sx = sy = punch = 0.0
+        if powers.stopped_vt(self, vt):
+            return sx, sy, punch
         for et, k, d in self.fx:
-            dt = vt - et
+            dt = powers.wdt(self, vt, et)
             if dt < 0 or dt > 1.0:
                 continue
             m = {"clash": 8, "hit": 4, "slam": 34, "stomp": 7, "iai": 16, "boom": 22}.get(k, 0)
@@ -458,7 +463,7 @@ class Renderer:
 
     def draw_fx(self, c, vt):
         for et, k, d in self.fx:
-            dt = vt - et
+            dt = powers.wdt(self, vt, et)
             if dt < 0:
                 continue
             rng = np.random.default_rng(d.get("seed", 0) + 11)
@@ -566,7 +571,7 @@ class Renderer:
     def draw_blood(self, c, vt, flat):
         g = 1500.0
         for et, (px, py), dirx, n, seed in self.blood:
-            dt = vt - et
+            dt = powers.wdt(self, vt, et)
             if dt < 0:
                 continue
             rng = np.random.default_rng(seed + 77)
@@ -823,6 +828,23 @@ class Renderer:
                      fill(col(color, a)))
 
     # ---------------------------------------------------- frame
+    def draw_one(self, c, who, t, vt, flat):
+        f = self.f
+        tr, style = f.tracks[who]
+        J = f.joints(who, t)
+        if not flat:
+            S = J["size"]
+            sa = max(0.0, 0.28 - J["hip"][1] / 900)
+            c.drawOval(skia.Rect(J["hip"][0] - 34 * S, -5, J["hip"][0] + 34 * S, 5),
+                       fill(col("#3a2e22", sa)))
+        self.ghosts(c, who, t, style, flat or style.get("ghost", "#888888"))
+        tails = self.tails(who, t) if style.get("band") else None
+        draw_fighter(c, J, style, flat=flat, tails=tails)
+        if not flat:
+            self.draw_wounds(c, who, J, vt, flat)
+        if J["p"]["sheath"] < 0.5 and not style.get("unarmed"):
+            self.blade_trail(c, who, t, "#ffffff" if flat else style.get("trail", "#ffffff"))
+
     def render_frame(self, c, i):
         f = self.f
         t = self.frames[i]
@@ -856,6 +878,9 @@ class Renderer:
         if mode == "white":
             c.clear(col("#ffffff"))
             return
+        sw_who, sg, _, _ = powers.stop_state(self, t)
+        if sg > 0:
+            c.saveLayer(None, powers.gray_paint(sg))
         if mode in ("invert", "slash"):
             c.clear(col("#0d0b10"))
         else:
@@ -868,7 +893,7 @@ class Renderer:
         if not flat:
             for who in f.ids:
                 J = f.joints(who, t)
-                if J["p"].get("hidden"):
+                if J["p"].get("hidden") or (sg > 0 and who == sw_who):
                     continue
                 S = J["size"]
                 h = J["hip"][1]
@@ -878,9 +903,10 @@ class Renderer:
         self.draw_craters(c, vt, flat)
         elements.draw_ground(self, c, t, flat)
         elements.draw_back(self, c, t, flat)
+        powers.draw_world(self, c, t, vt, flat)
         for who in f.ids:
             tr, style = f.tracks[who]
-            if f.joints(who, t)["p"].get("hidden"):
+            if f.joints(who, t)["p"].get("hidden") or (sg > 0 and who == sw_who):
                 continue
             if not flat and style.get("fast"):
                 self.speed_lines(c, who, t, style["ghost"])
@@ -899,7 +925,18 @@ class Renderer:
         self.draw_blood(c, vt, "#f4f1ea" if flat else None)
         self.draw_fx(c, vt)
         elements.draw_front(self, c, t, flat)
+        if sg <= 0:
+            powers.draw_front(self, c, t, vt, flat)
         c.restore()
+        if sg > 0:
+            c.restore()   # end of the gray layer: the one who stopped time stays in color
+            c.save()
+            c.translate(W / 2 - cx * z + shx, self.gy + shy)
+            c.scale(z, -z)
+            self.draw_one(c, sw_who, t, vt, flat)
+            powers.draw_front(self, c, t, vt, flat)
+            c.restore()
+        powers.draw_screen(self, c, t, vt)
 
         if mode == "slash":
             y = self.gy - 95 * z
@@ -929,6 +966,10 @@ class Renderer:
         fb = self.font_mid if self.wide else self.font_big
         gap = fb.measureText(" vs ")
         wl, wr = fb.measureText(left), fb.measureText(right)
+        if wl + gap + wr > W * 0.92:
+            fb = skia.Font(typeface("ExtraBold"), fb.getSize() * W * 0.92 / (wl + gap + wr))
+            gap = fb.measureText(" vs ")
+            wl, wr = fb.measureText(left), fb.measureText(right)
         x0 = W / 2 - (wl + gap + wr) / 2
         c.drawString(left, x0, top, fb, fill(col(lc, a)))
         c.drawString(" vs ", x0 + wl, top, fb, fill(col("#7d6f60", a)))
