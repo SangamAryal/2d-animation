@@ -10,11 +10,11 @@ Original characters; only the general idea of a time stop is used.
 from choreo_power import shift
 from rig import Track
 
-STOP = dict(name="TIME STOP", body="#e6dcff", back="#9a8bd0", band="#f2c14e",
-            steel="#ffffff", ghost="#9b7bff", trail="#efe3ff", accent="#a98bff")
-SIGHT = dict(name="FUTURE SIGHT", body="#a8f3e8", back="#55a79e", hat="#e3bd72",
-             eye="#0b3b40", scabbard=True, scab="#3f6b70", steel="#ffffff",
-             ghost="#7ff7ff", trail="#dffcff", accent="#3fd6c8")
+STOP = dict(name="TIME STOP", body="#ffb62e", back="#b9791a", band="#ffffff",
+            steel="#ffffff", ghost="#ffcf6b", trail="#fff0cc", accent="#ffb62e")
+SIGHT = dict(name="FUTURE SIGHT", body="#b6ff3c", back="#6fa81f", hat="#f4efd8",
+             eye="#12330a", scabbard=True, scab="#3d5c14", steel="#ffffff",
+             ghost="#7ff7ff", trail="#e9ffd0", accent="#a6f02c")
 TITLE = (("TIME STOP", STOP["accent"]), ("FUTURE SIGHT", SIGHT["accent"]))
 
 
