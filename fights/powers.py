@@ -100,10 +100,11 @@ def stop_state(r, t):
     return None, 0.0, 0, 0
 
 
-def gray_paint(g):
+def gray_paint(g, cold=False):
     """Desaturate with a cold violet cast, mixed with the original by g."""
     lr, lg, lb = 0.30, 0.59, 0.11
-    tint = (0.92, 0.90, 1.08)
+    # on an already dark, neutral scene the freeze gets only a slight cold cast
+    tint = (0.86, 0.93, 1.16) if cold else (0.92, 0.90, 1.08)
     m = []
     for i in range(3):
         row = [0.0] * 5
