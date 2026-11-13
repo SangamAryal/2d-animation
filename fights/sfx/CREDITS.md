@@ -13,3 +13,11 @@ videos, no attribution required. Converted to 48 kHz mono Ogg.
 
 Ice sounds (fight 03): `glass_heavy_*`, `glass_medium_*`, `glass_light_*`, `mining_*`, `bell_heavy`
 from Kenney "Impact Sounds" (kenney.nl), CC0.
+
+Fight 05 (sword vs spear) "edit" kit. Sangam asked for popular edit sounds and said copyright is
+not a concern for this channel, so these are NOT all public domain:
+- `slice_ring`, `sword_sling`, `fast_whoosh`, `clean_swoosh`, `vine_boom`, `cinematic_boom`,
+  `bass_drop`, `impact_transition`, `suspense_thud`, `dark_riser`, `metallic_riser`, `splat`,
+  `slap`, `punch_hard`, `body_thud`, `orchestra_hit`, `swipes`, `heartbeat_real`, `energy_burst`:
+  from github.com/sarpongandrews3333-eng/anime-sound-effects-library (commit 1d63ccc), mixed sources.
+- `phonk_4`, `phonk_6`: phonk edit clips from github.com/coah80/phonkedit-desktop (commit 3b83f0e).

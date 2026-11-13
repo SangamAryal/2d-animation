@@ -19,12 +19,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import audio  # noqa: E402
 import elements  # noqa: E402
 import powers  # noqa: E402
-from draw import col, draw_fighter, fill, stroke, polyline  # noqa: E402
+from draw import col, draw_fighter, draw_spear_head, fill, stroke, polyline  # noqa: E402
 from rig import R_HEAD, solve  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time"}
+FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time"}
 
 
 def typeface(weight="ExtraBold"):
@@ -66,6 +66,19 @@ def video_time(frames, ta):
     return min(idx, len(frames) - 1) / FPS
 
 
+def clamp_chain(pts, seg):
+    """Keep a rope's segments at most seg long (stops tails stretching)."""
+    out = [pts[0]]
+    for q in pts[1:]:
+        px, py = out[-1]
+        dx, dy = q[0] - px, q[1] - py
+        L = math.hypot(dx, dy)
+        if L > seg:
+            dx, dy = dx / L * seg, dy / L * seg
+        out.append((px + dx, py + dy))
+    return out
+
+
 def seg_closest(p1, q1, p2, q2):
     """Midpoint of the closest points between two segments."""
     p1, q1, p2, q2 = map(np.array, (p1, q1, p2, q2))
@@ -91,14 +104,34 @@ class Fight:
         self.title = d["title"]
         self.hp = d.get("hp", [])
         self.theme = d.get("theme", "day")
+        self.springy = d.get("springy", False)
         self.tracks = {i: (tr, st) for i, tr, st in self.fighters}
         self.ids = [i for i, _, _ in self.fighters]
+        self.smooth = {}
+        if d.get("springy"):
+            imp = {i: [] for i in self.ids}
+            for t, k, kw in self.ev:
+                v = kw.get("v", 1.0) * (1.6 if kw.get("big") else 1.0)
+                if k in ("hit", "dmg"):
+                    on = kw.get("on") or kw.get("who") or self.other(kw["by"])
+                    imp[on].append((t, dict(T=-650 * v, H=-1500 * v, uab=-900 * v,
+                                            fab=-1200 * v)))
+                elif k == "clash":
+                    for i in self.ids:
+                        imp[i].append((t, dict(T=-260 * v, H=-700 * v, sw=-500 * v,
+                                               uab=-500 * v)))
+                elif k == "flinch":
+                    imp[kw["who"]].append((t, dict(T=-500 * v, H=-1200 * v)))
+            import motion
+            for i, tr, st in self.fighters:
+                self.smooth[i] = motion.Smoothed(tr, self.end, imp[i], st.get("springs"))
 
     def joints(self, who, t):
         tr, st = self.tracks[who]
-        p, x = tr.sample(t)
+        p, x = (self.smooth[who] if who in self.smooth else tr).sample(t)
         return solve(p, x, tr.facing(t), size=st.get("size", 1.0),
-                     blade=st.get("blade", 72))
+                     blade=st.get("blade", 72), grip_off=st.get("grip_off", 9.0),
+                     butt=st.get("butt", 8.0))
 
     def other(self, who):
         return [i for i in self.ids if i != who][0]
@@ -148,7 +181,7 @@ class Renderer:
                 continue
             if k == "clash":
                 a, b = f.joints(f.ids[0], t), f.joints(f.ids[1], t)
-                pt = seg_closest(a["guard"], a["tip"], b["guard"], b["tip"])
+                pt = seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
                 self.fx.append((vt, k, dict(kw, pt=pt, seed=seed)))
             elif k == "hit":
                 A = f.joints(kw["by"], t)
@@ -199,6 +232,11 @@ class Renderer:
                 self.craters.append((vt, A["tip"][0], 1.0, seed))
             elif k in ("ground", "dust", "skid", "gust", "stomp"):
                 self.fx.append((vt, k, dict(kw, pt=(kw["x"], 2.0), seed=seed)))
+            elif k == "scrape":
+                self.fx.append((vt, k, dict(kw, t0=t, seed=seed)))
+                kw = dict(kw, vdur=video_time(self.frames, t + kw["dur"]) - vt)
+            elif k == "radial":
+                self.fx.append((vt, k, dict(kw, seed=seed)))
             elif k == "iai":
                 self.iai_vt, self.iai_t = vt, t
                 self.fx.append((vt, "iai", kw))
@@ -221,7 +259,24 @@ class Renderer:
                 self.fx.append((vt, k, dict(kw, seed=seed)))
                 if k == "charge":
                     self.cues.append((vt, "riser", dict(dur=kw["dur"])))
+            if "stop_at" in kw:
+                kw = dict(kw, vstop=video_time(self.frames, kw["stop_at"]))
             self.cues.append((vt, k, kw))
+        self.stop_ranges = []
+        for t, k, kw in f.ev:
+            if k != "hitstop":
+                continue
+            whos, m = set(), 3.0
+            for t2, k2, kw2 in f.ev:
+                if abs(t2 - t) < 0.02:
+                    if k2 in ("hit", "dmg"):
+                        whos.add(kw2.get("on") or kw2.get("who") or f.other(kw2["by"]))
+                        m = max(m, 7.0 if kw2.get("big") else 5.0)
+                    elif k2 == "clash":
+                        whos.update(f.ids)
+                        m = max(m, 5.0 if kw2.get("big") else 3.0)
+            a = video_time(self.frames, t)
+            self.stop_ranges.append((a, a + kw["dur"], whos, m))
         powers.finish(self)
         self.auto_swooshes()
 
@@ -246,11 +301,13 @@ class Renderer:
     def auto_swooshes(self):
         f = self.f
         skip = [self.iai_t] if self.iai_vt is not None else []
+        twirls = [(t0 - 0.1, t0 + kw.get("dur", 0.15) + 0.1) for t0, k, kw in f.ev if k in ("twirl", "thrust")]
         for who in f.ids:
             st = f.tracks[who][1]
             if st.get("unarmed"):
                 continue
             heavy = st.get("sword") == "cleaver"
+            spear = st.get("sword") == "spear"
             last = -9
             dt = 1 / 240
             t = 0.0
@@ -262,10 +319,11 @@ class Renderer:
                     sp = math.hypot(tip[0] - prev[0], tip[1] - prev[1]) / dt
                     gap = 0.3 if heavy else 0.09
                     if sp > 1600 and t - last > gap and \
-                            all(abs(t - s) > 0.2 for s in skip):
+                            all(abs(t - s) > 0.2 for s in skip) and \
+                            not (spear and any(a <= t <= b for a, b in twirls)):
                         self.cues.append((video_time(self.frames, t), "swoosh",
                                           dict(v=min(1.0, 0.5 + sp / 6000),
-                                               heavy=heavy)))
+                                               heavy=heavy, spear=spear)))
                         last = t
                 prev = tip
                 t += dt
@@ -291,6 +349,8 @@ class Renderer:
                 mid, dist = (min(xs) + max(xs)) / 2, max(xs) - min(xs)
             if self.wide:
                 tz = min(self.W / (dist + 700), 2.8 * self.s)
+            elif f.springy:
+                tz = min(self.W / (dist + 190), 2.9 * self.s)
             else:
                 tz = min(self.W / (dist + 260), 3.2 * self.s)
             if self.slow_vt and self.slow_vt[0] <= vt <= self.slow_vt[1] + 0.05:
@@ -304,6 +364,33 @@ class Renderer:
                 cx, z = mid, tz
             cams.append((cx, z))
         self.cams = cams
+
+    def tilt(self, vt):
+        if not self.f.springy:
+            return 0.0
+        a = 0.0
+        for et, k, d in self.fx:
+            dt = vt - et
+            if 0 <= dt < 1.2 and (d.get("big") or k == "slam"):
+                a += 2.2 * d.get("v", 1.0) * math.exp(-dt * 4.5) * math.cos(dt * 18 + d.get("seed", 0))
+        return max(-3.0, min(3.0, a))
+
+    def radial(self, c, pt, flat, i):
+        """Anime impact frame: speed lines bursting out of the hit point."""
+        rng = np.random.default_rng(i * 7 + 3)
+        px, py = pt
+        for k in range(46):
+            ang = rng.uniform(0, 2 * math.pi)
+            r0 = rng.uniform(70, 160)
+            r1 = r0 + rng.uniform(300, 1100)
+            w = rng.uniform(2, 9)
+            p_ = skia.Path()
+            ca, sa = math.cos(ang), math.sin(ang)
+            p_.moveTo(px + ca * r0, py + sa * r0)
+            p_.lineTo(px + ca * r1 - sa * w, py + sa * r1 + ca * w)
+            p_.lineTo(px + ca * r1 + sa * w, py + sa * r1 - ca * w)
+            p_.close()
+            c.drawPath(p_, fill(col(flat or "#ffffff", 0.9)))
 
     def shake_punch(self, vt):
         sx = sy = punch = 0.0
@@ -322,6 +409,8 @@ class Renderer:
             sy += m * e * math.cos(dt * 71 + 1.3 * d.get("seed", 0))
             if k in ("slam", "iai") or d.get("big"):
                 punch += 0.12 * math.exp(-dt * 6)
+            elif self.f.springy and k in ("hit", "clash"):
+                punch += 0.05 * math.exp(-dt * 9)
         return sx * self.s, sy * self.s, punch
 
     # ---------------------------------------------------- background
@@ -428,7 +517,45 @@ class Renderer:
         J = f.joints(who, t)
         hx, hy = J["head"]
         pts_a[0] = pts_b[0] = (hx - J["facing"] * (R_HEAD - 2) * S, hy + 3)
+        if f.springy:
+            pts_a, pts_b = clamp_chain(pts_a, 8 * S), clamp_chain(pts_b, 7 * S)
         return pts_a, pts_b
+
+    def tassel(self, c, who, t, flat):
+        """Red horsehair tassel under the spearhead: trails behind every move."""
+        f = self.f
+        st = f.tracks[who][1]
+        if st.get("sword") != "spear" or not st.get("tassel"):
+            return
+        J = f.joints(who, t)
+        if J["p"].get("broken", 0) > 0.5:
+            return
+        S = J["size"]
+        off = 12 + st.get("blade", 72) - st.get("head_len", 26) - 3
+
+        def anchor(tt):
+            K = f.joints(who, tt)
+            hx, hy = K["haf"]
+            sx, sy = K["sw_dir"]
+            return hx + sx * off * S * K["size"], hy + sy * off * S * K["size"]
+        for strand in range(3):
+            pts = []
+            for k in range(8):
+                ax, ay = anchor(t - k * 0.018)
+                fl = math.sin(t * 19 + k * 0.8 + strand * 2.1) * k * 0.9
+                pts.append((ax + fl * 0.4, ay - k * k * 0.32 - k * 1.2 + fl * 0.3 - strand * 1.5))
+            pts[0] = anchor(t)
+            pts = clamp_chain(pts, (4.2 + strand * 0.6) * S)
+            polyline(c, pts, stroke(col(flat or st["tassel"]), (4.6 - strand) * S))
+
+    def jitter(self, who, i):
+        """Shake a fighter in place while the hit-stop holds the frame."""
+        vt = i / FPS
+        for a, b, whos, m in self.stop_ranges:
+            if who in whos and a <= vt < b:
+                u = (vt - a) / max(1e-3, b - a)
+                return m * (1 - u) * (1 if i % 2 else -1), 0.0
+        return 0.0, 0.0
 
     def blade_trail(self, c, who, t, color):
         f = self.f
@@ -513,7 +640,37 @@ class Renderer:
             polyline(c, pts, stroke(col("#3a3128", a), 2.6))
 
     def draw_fx(self, c, vt):
+        t_now = self.frames[min(self.n - 1, int(round(vt * FPS)))]
         for et, k, d in self.fx:
+            if k == "scrape" and d["t0"] <= t_now <= d["t0"] + d["dur"] + 0.4:
+                f = self.f
+                rng = np.random.default_rng(d["seed"])
+                tt = d["t0"]
+                while tt < min(t_now, d["t0"] + d["dur"]):
+                    a, b = f.joints(f.ids[0], tt), f.joints(f.ids[1], tt)
+                    px, py = seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
+                    for j in range(3):
+                        age = t_now - tt
+                        life = rng.uniform(0.15, 0.4)
+                        ang = rng.uniform(0, 2 * math.pi)
+                        sp = rng.uniform(200, 700)
+                        vx, vy = math.cos(ang) * sp, math.sin(ang) * sp + 200
+                        if age > life:
+                            continue
+                        x = px + vx * age
+                        y = py + vy * age - 900 * age * age
+                        c.drawLine(x, y, x - vx * 0.02, y - (vy - 1800 * age) * 0.02,
+                                   stroke(col("#ffd36b", 1 - age / life), 2.4))
+                    tt += 1 / 120
+                if t_now <= d["t0"] + d["dur"]:
+                    a, b = f.joints(f.ids[0], t_now), f.joints(f.ids[1], t_now)
+                    px, py = seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
+                    fl = 0.7 + 0.3 * math.sin(t_now * 90)
+                    c.drawCircle(px, py, 22 * fl, fill(col("#ffd36b", 0.35)))
+                    c.drawCircle(px, py, 9 * fl, fill(col("#ffffff", 0.9)))
+                continue
+            if k == "radial":
+                continue
             dt = powers.wdt(self, vt, et)
             if dt < 0:
                 continue
@@ -837,6 +994,8 @@ class Renderer:
             label = f"{int(round(hp * 100))}"
             fw = self.font_small.measureText(label)
             lx = x0 + 10 * s if i == 0 else x0 + bw - fw - 10 * s
+            c.drawString(label, lx + 1.5 * s, top + bh - 4.5 * s, self.font_small,
+                         fill(col("#1b1714", 0.8)))
             c.drawString(label, lx, top + bh - 6 * s, self.font_small,
                          fill(col("#ffffff")))
 
@@ -844,11 +1003,13 @@ class Renderer:
         for bt, who, J in self.breaks:
             if t < bt:
                 continue
-            g, tip = J["guard"], J["tip"]
+            st = self.f.tracks[who][1]
+            spear = st.get("sword") == "spear"
+            g, tip = (J["haf"] if spear else J["guard"]), J["tip"]
             dx, dy = tip[0] - g[0], tip[1] - g[1]
             L = math.hypot(dx, dy)
             ux, uy = dx / L, dy / L
-            cut = 34 * J["size"]
+            cut = (st.get("cut", 34) if spear else 34) * J["size"]
             p0 = (g[0] + ux * cut, g[1] + uy * cut)
             half = (L - cut) / 2
             x, y = (p0[0] + tip[0]) / 2, (p0[1] + tip[1]) / 2
@@ -870,6 +1031,16 @@ class Renderer:
                         a += (round(a / math.pi) * math.pi - a) * 0.2
                 tt += dt
             ex, ey = math.cos(a) * half, math.sin(a) * half
+            if spear:
+                S = J["size"]
+                ca, sa = math.cos(a), math.sin(a)
+                hl = st.get("head_len", 26) * S
+                p1 = (x + ex, y + ey)
+                hb = (p1[0] - ca * hl, p1[1] - sa * hl)
+                c.drawLine(x - ex, y - ey, hb[0], hb[1], stroke(col(flat or "#1d1612"), 6.4 * S))
+                c.drawLine(x - ex, y - ey, hb[0], hb[1], stroke(col(flat or st.get("wood", "#8a5a33")), 3.6 * S))
+                draw_spear_head(c, hb, p1, ca, sa, -sa, ca, S, st, 1.0, flat)
+                continue
             c.drawLine(x - ex, y - ey, x + ex, y + ey, stroke(col(flat or "#222222"), 5.2))
             c.drawLine(x - ex, y - ey, x + ex, y + ey, stroke(col(flat or "#e9eef2"), 2.6))
 
@@ -906,10 +1077,14 @@ class Renderer:
         W, H = self.W, self.H
 
         mode = "normal"
+        self.impact_pt = None
         for et, k, d in self.fx:
             dtf = (vt - et) * FPS
             if (k in ("clash", "hit", "decap", "boom") and d.get("big") or k == "slam") and 0 <= dtf < 3:
                 mode = "invert"
+                if self.f.springy:
+                    mode = "invert" if int(dtf) != 1 else "bw"
+                    self.impact_pt = d.get("pt")
             if k == "iai":
                 if 0 <= dtf < 3:
                     mode = "white"
@@ -929,18 +1104,30 @@ class Renderer:
         if mode == "white":
             c.clear(col("#ffffff"))
             return
+        tilt = self.tilt(vt)
+        c.save()
+        if tilt:
+            c.translate(W / 2, H / 2)
+            c.rotate(tilt)
+            k_ = 1 + abs(tilt) * 0.045
+            c.scale(k_, k_)
+            c.translate(-W / 2, -H / 2)
         sw_who, sg, _, _ = powers.stop_state(self, t)
         if sg > 0:
             c.saveLayer(None, powers.gray_paint(sg, cold=self.f.theme == "night"))
         if mode in ("invert", "slash"):
             c.clear(col("#0d0b10"))
+        elif mode == "bw":
+            c.clear(col("#f4f1ea"))
         else:
             self.background(c, cx, z, dark)
 
-        flat = "#f4f1ea" if mode in ("invert", "slash") else None
+        flat = "#f4f1ea" if mode in ("invert", "slash") else ("#0d0b10" if mode == "bw" else None)
         c.save()
         c.translate(W / 2 - cx * z + shx, self.gy + shy)
         c.scale(z, -z)
+        if self.impact_pt is not None:
+            self.radial(c, self.impact_pt, flat, i)
         if not flat:
             for who in f.ids:
                 J = f.joints(who, t)
@@ -961,15 +1148,20 @@ class Renderer:
                 continue
             if not flat and style.get("fast"):
                 self.speed_lines(c, who, t, style["ghost"])
+            jx, jy = self.jitter(who, i)
+            c.save()
+            c.translate(jx, jy)
             self.ghosts(c, who, t, style, flat or style.get("ghost", "#888888"))
             J = f.joints(who, t)
             tails = self.tails(who, t) if style.get("band") else None
+            self.tassel(c, who, t, flat)
             draw_fighter(c, J, style, flat=flat, tails=tails)
             elements.decorate(self, c, who, J, style, t, flat)
             if not flat:
                 self.draw_wounds(c, who, J, vt, flat)
             if J["p"]["sheath"] < 0.5 and not style.get("unarmed"):
                 self.blade_trail(c, who, t, "#ffffff" if flat else style.get("trail", "#ffffff"))
+            c.restore()
         self.broken_pieces(c, t, flat)
         self.head_piece(c, t, flat)
         self.neck_fountain(c, t, "#f4f1ea" if flat else None)
@@ -1006,6 +1198,7 @@ class Renderer:
                 u = (vt - et) / 0.9
                 r = 40 * self.s * math.sin(math.pi * u)
                 self.star(c, W * 0.18, H * 0.27, r, 1.0, 4, 7, "#ffd84a")
+        c.restore()   # end of camera tilt
         if mode == "normal":
             self.overlay_text(c, vt)
 
@@ -1049,7 +1242,7 @@ class Renderer:
         silent = os.path.join(tmp, "v.mp4")
         wav = os.path.join(tmp, "a.wav")
         dur = self.n / FPS
-        mix = audio.mix(self.cues, dur)
+        mix = audio.mix(self.cues, dur, kit="edit" if self.f.springy else "classic")
         with wave.open(wav, "wb") as w:
             w.setnchannels(2)
             w.setsampwidth(2)

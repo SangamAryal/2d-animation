@@ -260,7 +260,146 @@ def pick(rng, names):
     return sample(names[rng.integers(len(names))])
 
 
-def mix(cues, dur, seed=7):
+def fade(x, n_in=0.0, n_out=0.0, length=None):
+    """Trim to length seconds and fade the ends (seconds)."""
+    if length is not None:
+        x = x[:int(length * SR)]
+    x = x.copy()
+    a, b = int(n_in * SR), int(n_out * SR)
+    if a:
+        x[:a] *= np.linspace(0, 1, min(a, len(x)))
+    if b:
+        x[-b:] *= np.linspace(1, 0, min(b, len(x)))
+    return x
+
+
+def edit_kit(put, rng, t0, kind, kw):
+    """Louder, punchier sounds for the "edit" style fights (sword vs spear).
+
+    Returns True when it handled the cue, otherwise the classic kit plays it.
+    """
+    v = kw.get("v", 1.0)
+    r = rng.uniform(0.95, 1.05)
+    big = kw.get("big", False)
+    SWISH = ["swish_1", "swish_2", "swish_3", "swish_4", "swish_5"]
+    RINGS = ["clash_ring_1", "clash_ring_2"]
+    METAL = ["metal_hit_1", "metal_hit_2", "metal_hit_3", "metal_hit_4"]
+    PUNCH = ["punch_heavy_0", "punch_heavy_1", "punch_heavy_2"]
+    if kind == "swoosh":
+        if kw.get("spear"):
+            put(t0 - 0.04, pitch(sample("clean_swoosh"), 1.25 * r), 0.55 * v)
+            put(t0 - 0.03, pitch(pick(rng, SWISH), 0.9 * r), 0.5 * v)
+        else:
+            put(t0 - 0.03, pitch(pick(rng, SWISH), 1.12 * r), 0.75 * v)
+            put(t0 - 0.05, fade(pitch(sample("fast_whoosh"), 1.2 * r), 0, 0.1, 0.4), 0.4 * v)
+        return True
+    if kind == "thrust":
+        put(t0 - 0.06, fade(pitch(sample("fast_whoosh"), 1.35 * r), 0, 0.1, 0.4), 0.8 * v)
+        put(t0 - 0.03, pitch(sample("clean_swoosh"), 1.5 * r), 0.5 * v)
+        put(t0, fade(pitch(sample("slice_ring"), 1.6 * r), 0, 0.15, 0.35), 0.18 * v)
+        return True
+    if kind == "zip":
+        put(t0 - 0.02, fade(pitch(sample("fast_whoosh"), 1.1 * r), 0, 0.1, 0.5), 0.8 * v)
+        put(t0, pitch(pick(rng, SWISH), 1.5 * r), 0.5 * v)
+        return True
+    if kind == "twirl":
+        d_ = kw.get("dur", 0.6)
+        n = max(2, int(d_ / 0.13))
+        for i in range(n):
+            u = i / (n - 1)
+            put(t0 + d_ * u ** 0.8, pitch(pick(rng, SWISH), 0.9 + 0.35 * u), 0.35 + 0.35 * u)
+        return True
+    if kind == "plant":
+        put(t0, pitch(pick(rng, PUNCH), 0.6), 0.9)
+        put(t0, pitch(sample("metal_heavy_2"), 0.7), 0.35)
+        return True
+    if kind == "fight":
+        put(t0, sample("bass_drop"), 0.75)
+        put(t0, sample("orchestra_hit"), 0.45)
+        return True
+    if kind == "clash":
+        put(t0, pitch(pick(rng, RINGS), (0.85 if big else 1.0) * r), 0.85 * v)
+        put(t0, pitch(pick(rng, METAL), r), 0.55 * v)
+        put(t0, fade(pitch(sample("slice_ring"), 1.1 * r), 0, 0.3, 0.9 if big else 0.45),
+            (0.5 if big else 0.28) * v)
+        if big:
+            put(t0, pitch(pick(rng, PUNCH), 0.75), 0.9 * v)
+            put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.2), 0.55 * v)
+        return True
+    if kind == "hit":
+        blunt = kw.get("part") == "hilt0"
+        if blunt:
+            put(t0, sample("punch_hard"), 0.9 * v)
+            put(t0, fade(sample("body_thud"), 0, 0.3, 1.0), 0.7 * v)
+            put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.85 * r), 0.6 * v)
+        else:
+            put(t0, fade(pitch(sample("sword_sling"), 1.1 * r), 0, 0.3, 0.7), 0.55 * v)
+            put(t0, pitch(sample("splat"), 1.05 * r), 0.75 * v)
+            put(t0, pitch(sample("slap"), 0.85 * r), 0.45 * v)
+            put(t0, pitch(pick(rng, PUNCH), 1.1 * r), 0.45 * v)
+        if big:
+            put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.0), 0.6 * v)
+        return True
+    if kind == "dmg":
+        put(t0, pitch(sample("splat"), 0.8), 1.0)
+        put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.8), 0.8)
+        return True
+    if kind == "kill":
+        put(t0, fade(sample("impact_transition"), 0, 0.6, 3.0), 0.9)
+        put(t0, sample("cinematic_boom"), 0.8)
+        put(t0 + 0.25, fade(sample("phonk_6"), 0.02, 0.6), 1.0)
+        return True
+    if kind == "bed":
+        # phonk loop under the fight: 8-beat loop of phonk_4, crossfaded
+        x = sample("phonk_4")
+        L, xf = 5.0175, 0.08
+        seg = fade(x[:int((L + xf) * SR)], xf, xf)
+        t, stop = t0, kw["vstop"]
+        bed = np.zeros(int((stop - t0 + L + 1) * SR))
+        while t < stop:
+            i = int((t - t0) * SR)
+            bed[i:i + len(seg)] += seg
+            t += L
+        bed = fade(bed[:int((stop - t0) * SR)], 0.3, 0.45)
+        put(t0, bed, kw.get("gain", 0.3))
+        return True
+    if kind == "iai":
+        put(t0 - 0.08, fade(pitch(sample("fast_whoosh"), 0.9), 0, 0.1, 0.5), 1.0)
+        put(t0, sample("slice_ring"), 0.75)
+        put(t0, fade(sample("cinematic_boom"), 0, 1.0, 3.0), 0.7)
+        return True
+    if kind == "riser":
+        d_ = kw["dur"]
+        x = sample("dark_riser")
+        n = int(d_ * SR)
+        put(t0, fade(x[max(0, len(x) - n):], d_ * 0.4, 0.0), 0.6)
+        return True
+    if kind == "scrape":
+        d_ = kw.get("vdur", 1.0)
+        tt = _t(d_)
+        n = rng.standard_normal(len(tt))
+        grind = bp(n, 2500, 9000) * (0.6 + 0.4 * np.sin(2 * np.pi * 37 * tt) ** 2)
+        ring = sum(a * np.sin(2 * np.pi * f * tt) for f, a in ((2950, 0.3), (4420, 0.2), (6100, 0.12)))
+        env = np.minimum(1, tt / 0.05) * np.minimum(1, (d_ - tt) / 0.12)
+        put(t0, (grind * 0.5 + ring) * env * 0.9 * v)
+        put(t0, fade(pitch(sample("metallic_riser"), 2.1 / max(0.5, d_)), 0, 0.1), 0.45)
+        return True
+    if kind == "break":
+        put(t0, snap(rng, 1.4))
+        put(t0, pitch(sample("metal_latch"), 0.8), 0.7)
+        put(t0, pitch(pick(rng, PUNCH), 1.3), 0.6)
+        return True
+    if kind == "thud":
+        put(t0, fade(sample("body_thud"), 0, 0.3, 1.0), 0.8 * v)
+        put(t0, pitch(pick(rng, PUNCH), 0.75 * r), 0.7 * v)
+        return True
+    if kind == "heart":
+        put(t0, fade(sample("heartbeat_real"), 0, 0.2, 1.0), 1.0 * v)
+        return True
+    return False
+
+
+def mix(cues, dur, seed=7, kit="classic"):
     """cues: list of (video_time, kind, params)."""
     rng = np.random.default_rng(seed)
     out = np.zeros(int(dur * SR) + 3 * SR)
@@ -287,6 +426,8 @@ def mix(cues, dur, seed=7):
     for t0, kind, kw in cues:
         v = kw.get("v", 1.0)
         r = rng.uniform(0.94, 1.06)
+        if kit == "edit" and edit_kit(put, rng, t0, kind, kw):
+            continue
         if kind == "swoosh":
             if kw.get("heavy"):
                 put(t0 - 0.05, pitch(pick(rng, HEAVY_SW), 0.75 * r), 0.9 * v)

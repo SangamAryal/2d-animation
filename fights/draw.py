@@ -77,6 +77,52 @@ def draw_sword(c, J, steel, dark, alpha=1.0, broken=0.0, kind="katana"):
          stroke(col("#c9a24a", alpha), 4.2 * J["size"]))
 
 
+def draw_spear(c, J, style, alpha=1.0, flat=None, broken=0.0):
+    """Long wooden shaft, leaf-shaped steel head, metal butt cap."""
+    sx, sy = J["sw_dir"]
+    S = J["size"]
+    butt, tip, haf = J["hilt0"], J["tip"], J["haf"]
+    L = math.hypot(tip[0] - haf[0], tip[1] - haf[1])
+    ux, uy = (tip[0] - haf[0]) / L, (tip[1] - haf[1]) / L
+    nx, ny = -uy, ux
+    hl = style.get("head_len", 26) * S
+    hb = (tip[0] - ux * hl, tip[1] - uy * hl)
+    end = hb
+    if broken > 0.5:
+        cut = style.get("cut", 34) * S
+        end = (haf[0] + ux * cut, haf[1] + uy * cut)
+    dark = flat or "#1d1612"
+    line(c, butt, end, stroke(col(dark, alpha), 6.4 * S))
+    line(c, butt, end, stroke(col(flat or style.get("wood", "#8a5a33"), alpha), 3.6 * S))
+    line(c, butt, (butt[0] + ux * 6 * S, butt[1] + uy * 6 * S),
+         stroke(col(flat or "#c9a24a", alpha), 6.0 * S, skia.Paint.kButt_Cap))
+    if broken > 0.5:
+        # splintered end
+        for k in (-1, 0, 1):
+            line(c, end, (end[0] + ux * 5 * S + nx * k * 2.5 * S, end[1] + uy * 5 * S + ny * k * 2.5 * S),
+                 stroke(col(flat or "#c49a6c", alpha), 1.6 * S))
+        return
+    draw_spear_head(c, hb, tip, ux, uy, nx, ny, S, style, alpha, flat)
+
+
+def draw_spear_head(c, hb, tip, ux, uy, nx, ny, S, style, alpha=1.0, flat=None):
+    hl = math.hypot(tip[0] - hb[0], tip[1] - hb[1])
+    w = 5.5 * S
+    m = (hb[0] + ux * hl * 0.38, hb[1] + uy * hl * 0.38)
+    path = skia.Path()
+    path.moveTo(*hb)
+    path.lineTo(m[0] + nx * w, m[1] + ny * w)
+    path.lineTo(*tip)
+    path.lineTo(m[0] - nx * w, m[1] - ny * w)
+    path.close()
+    c.drawPath(path, fill(col(flat or style.get("steel", "#e9eef2"), alpha)))
+    c.drawPath(path, stroke(col(flat or "#1d1612", alpha), 2.0 * S))
+    line(c, hb, (hb[0] + ux * hl * 0.85, hb[1] + uy * hl * 0.85),
+         stroke(col(flat or "#9aa6b0", alpha), 1.2 * S))
+    line(c, (hb[0] - nx * 4 * S, hb[1] - ny * 4 * S), (hb[0] + nx * 4 * S, hb[1] + ny * 4 * S),
+         stroke(col(flat or "#c9a24a", alpha), 3.4 * S))
+
+
 def draw_scabbard(c, J, color, steel, dark, sheathed, alpha=1.0):
     s0, s1 = J["sc0"], J["sc1"]
     line(c, s0, s1, stroke(col(color, alpha), 5.0))
@@ -155,7 +201,9 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         ex, ey = hx + J["facing"] * 0 + (d(a + 90)[0] * J["facing"]) * R * 0.45 + ux * R * 0.15, \
             hy + d(a + 90)[1] * R * 0.45 + uy * R * 0.15
         c.drawCircle(ex, ey, 2.2 * S, fill(col(flat or style["eye"], alpha)))
-    if p["sheath"] < 0.5 and not style.get("unarmed"):
+    if style.get("sword") == "spear":
+        draw_spear(c, J, style, alpha, flat, p.get("broken", 0))
+    elif p["sheath"] < 0.5 and not style.get("unarmed"):
         draw_sword(c, J, flat or style["steel"], flat or "#222222", alpha,
                    p.get("broken", 0), style.get("sword", "katana"))
     polyline(c, [J["sho"], J["elf"], J["haf"]], pf)

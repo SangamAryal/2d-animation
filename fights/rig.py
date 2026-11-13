@@ -196,7 +196,7 @@ def ik2(sx, sy, tx, ty, l1, l2, bend):
     return sx + l1 * math.cos(ang), sy + l1 * math.sin(ang)
 
 
-def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0):
+def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0, grip_off=9.0, butt=8.0):
     """Joint positions in world space for pose p at hip x.
 
     size scales the whole figure; p["rot"] spins the whole body (flips,
@@ -231,15 +231,17 @@ def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0):
     hab = add(elb, p["fab"], L_FARM)
     g = p["grip"]
     if g > 0.01:
-        tgt = add(J["haf"], p["sw"], 9)
+        tgt = add(J["haf"], p["sw"], grip_off)
         e2 = ik2(shoulder[0], shoulder[1], tgt[0], tgt[1], L_UARM * size,
                  L_FARM * size, -facing)
         elb = (lerp(elb[0], e2[0], g), lerp(elb[1], e2[1], g))
         hab = (lerp(hab[0], tgt[0], g), lerp(hab[1], tgt[1], g))
     J["elb"], J["hab"] = elb, hab
-    J["hilt0"] = add(J["haf"], p["sw"], -8)
+    J["hilt0"] = add(J["haf"], p["sw"], -butt)
     J["guard"] = add(J["haf"], p["sw"], 12)
     J["tip"] = add(J["haf"], p["sw"], 12 + blade)
+    # w0: where the weapon's hard part starts (blade guard, or a spear's butt)
+    J["w0"] = J["hilt0"] if butt > 20 else J["guard"]
     sc_a = -115 + p["T"] * 0.6
     J["sc0"] = add(add(hip, p["T"], 8), 90, 10)
     J["sc1"] = add(J["sc0"], sc_a, 72)
