@@ -19,12 +19,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import audio  # noqa: E402
 import elements  # noqa: E402
 import powers  # noqa: E402
-from draw import col, draw_fighter, draw_spear_head, fill, stroke, polyline  # noqa: E402
+from draw import col, draw_fighter, draw_helm, draw_shield, draw_spear_head, fill, shield_frame, stroke, polyline  # noqa: E402
 from rig import R_HEAD, solve  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time"}
+FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight"}
 
 
 def typeface(weight="ExtraBold"):
@@ -116,6 +116,11 @@ class Fight:
                     on = kw.get("on") or kw.get("who") or self.other(kw["by"])
                     imp[on].append((t, dict(T=-650 * v, H=-1500 * v, uab=-900 * v,
                                             fab=-1200 * v)))
+                elif k in ("armor", "shieldhit"):
+                    on = kw.get("on") or self.other(kw["by"])
+                    s_ = 0.55 if k == "armor" else 0.4
+                    imp[on].append((t, dict(T=-650 * v * s_, H=-1500 * v * s_, uab=-600 * v * s_)))
+                    imp[kw["by"]].append((t, dict(T=-200 * v, sw=-600 * v, uaf=-300 * v)))
                 elif k == "clash":
                     for i in self.ids:
                         imp[i].append((t, dict(T=-260 * v, H=-700 * v, sw=-500 * v,
@@ -170,6 +175,7 @@ class Renderer:
         self.craters = []    # (vt, x, size, seed)
         self.decaps = []     # (t, who, J_victim, J_attacker)
         self.banners = []    # (vt, text)
+        self.shield_breaks = []  # (t, who, J, push dir)
         self.hp = f.hp
         self.el = []         # elemental effects (elements.py)
         self.el_marks = {}
@@ -197,6 +203,20 @@ class Renderer:
                 self.add_wound(vt, on, B, pt, seed)
                 self.blood.append((vt, pt, dirx, 16 if kw.get("big") else 11, seed))
                 self.damage.append((vt, on, kw.get("dmg", 0)))
+            elif k in ("armor", "shieldhit", "shieldbreak"):
+                A = f.joints(kw["by"], t)
+                on = kw.get("on") or f.other(kw["by"])
+                B = f.joints(on, t)
+                if k == "armor":
+                    pt = seg_closest(A["guard"], A["tip"], B["hip"], B["neck"])
+                else:
+                    pt = shield_frame(B)[0]
+                self.fx.append((vt, "clash", dict(kw, pt=pt, seed=seed,
+                                                  big=kw.get("big", k == "shieldbreak"))))
+                if k == "shieldbreak":
+                    self.shield_breaks.append((t, on, B, 1.0 if A["hip"][0] < B["hip"][0] else -1.0))
+                if kw.get("dmg"):
+                    self.damage.append((vt, on, kw["dmg"]))
             elif k == "decap":
                 self.decaps.append((t, kw["who"], f.joints(kw["who"], t),
                                     f.joints(kw["by"], t)))
@@ -269,7 +289,7 @@ class Renderer:
             whos, m = set(), 3.0
             for t2, k2, kw2 in f.ev:
                 if abs(t2 - t) < 0.02:
-                    if k2 in ("hit", "dmg"):
+                    if k2 in ("hit", "dmg", "armor", "shieldhit", "shieldbreak"):
                         whos.add(kw2.get("on") or kw2.get("who") or f.other(kw2["by"]))
                         m = max(m, 7.0 if kw2.get("big") else 5.0)
                     elif k2 == "clash":
@@ -812,6 +832,40 @@ class Renderer:
                     c.drawLine(px, py, px + math.cos(an) * L, py + math.sin(an) * L,
                                stroke(col(flat or self.BLOOD, a), 4 * a + 1))
 
+    def shield_pieces(self, c, t, flat):
+        """The split shield: two halves fly apart, bounce and lie flat."""
+        for bt, who, J, push in self.shield_breaks:
+            if t < bt:
+                continue
+            st = self.f.tracks[who][1]
+            S = J["size"]
+            ctr, up, ac = shield_frame(J)
+            a0 = math.atan2(up[1], up[0])
+            for side in (-1, 1):
+                x, y = ctr[0] + ac[0] * side * 6, ctr[1] + ac[1] * side * 6
+                vx = push * 160 + side * ac[0] * 170
+                vy = 330 + side * 60
+                a, w = a0, side * 9.0
+                dt, tt = 1 / 240, 0.0
+                while tt < t - bt:
+                    vy -= 1500 * dt
+                    x += vx * dt
+                    y += vy * dt
+                    a += w * dt
+                    if y <= 7 * S and vy < 0:
+                        y = 7 * S
+                        vy = -vy * 0.3
+                        vx *= 0.55
+                        w *= 0.4
+                        if abs(vy) < 50:
+                            vy = 0
+                            w = 0
+                            a += (round(a / math.pi) * math.pi - a) * 0.08
+                    tt += dt
+                up_ = (math.cos(a), math.sin(a))
+                ac_ = (up_[1], -up_[0])
+                draw_shield(c, (x, y), up_, ac_, S, st, 1.0, flat, half=side)
+
     def head_piece(self, c, t, flat):
         """The cut-off head: flies, bounces, then rolls to a stop."""
         f = self.f
@@ -843,6 +897,9 @@ class Renderer:
                 tt += dt
                 trail.append((x, y))
             c.drawCircle(x, y, R, fill(col(flat or st["body"])))
+            if st.get("helm"):
+                draw_helm(c, x, y, math.cos(ang + math.pi / 2), math.sin(ang + math.pi / 2),
+                          math.cos(ang) * J["facing"], math.sin(ang) * J["facing"], R, S, st, 1.0, flat)
             if st.get("band"):
                 ux, uy = math.cos(ang + math.pi / 2), math.sin(ang + math.pi / 2)
                 rx, ry = math.cos(ang), math.sin(ang)
@@ -1163,6 +1220,7 @@ class Renderer:
                 self.blade_trail(c, who, t, "#ffffff" if flat else style.get("trail", "#ffffff"))
             c.restore()
         self.broken_pieces(c, t, flat)
+        self.shield_pieces(c, t, flat)
         self.head_piece(c, t, flat)
         self.neck_fountain(c, t, "#f4f1ea" if flat else None)
         self.draw_blood(c, vt, "#f4f1ea" if flat else None)

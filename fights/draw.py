@@ -63,6 +63,31 @@ def draw_sword(c, J, steel, dark, alpha=1.0, broken=0.0, kind="katana"):
         c.drawLine(guard[0] + nx * w0 * 0.3, guard[1] + ny * w0 * 0.3,
                    tip[0] + nx * w1 * 0.3, tip[1] + ny * w1 * 0.3,
                    stroke(col(dark, alpha), 3.4))
+    elif kind == "longsword":
+        # straight double-edged blade with a fuller and a point
+        S = J["size"]
+        L = math.hypot(tip[0] - guard[0], tip[1] - guard[1])
+        ux, uy = (tip[0] - guard[0]) / L, (tip[1] - guard[1]) / L
+        px, py = -uy, ux
+        w = 3.6 * S
+        base = (tip[0] - ux * 12 * S, tip[1] - uy * 12 * S)
+        p = skia.Path()
+        p.moveTo(guard[0] + px * w, guard[1] + py * w)
+        p.lineTo(base[0] + px * w, base[1] + py * w)
+        p.lineTo(*tip)
+        p.lineTo(base[0] - px * w, base[1] - py * w)
+        p.lineTo(guard[0] - px * w, guard[1] - py * w)
+        p.close()
+        c.drawPath(p, fill(col(steel, alpha)))
+        c.drawPath(p, stroke(col(dark, alpha), 2.2 * S))
+        line(c, guard, (base[0] - ux * 6 * S, base[1] - uy * 6 * S), stroke(col("#9aa6b0" if steel != dark else dark, alpha), 1.3 * S))
+        line(c, hilt0, guard, stroke(col(dark, alpha), 5.5 * S, skia.Paint.kButt_Cap))
+        c.drawCircle(hilt0[0], hilt0[1], 4.2 * S, fill(col(dark if steel == dark else "#c9a24a", alpha)))
+        g = 13 * S
+        gx, gy = -sy * g, sx * g
+        line(c, (guard[0] - gx, guard[1] - gy), (guard[0] + gx, guard[1] + gy),
+             stroke(col(dark if steel == dark else "#c9a24a", alpha), 4.6 * S))
+        return
     else:
         mid = ((guard[0] + tip[0]) / 2 + nx * 3.5, (guard[1] + tip[1]) / 2 + ny * 3.5)
         path = skia.Path()
@@ -163,7 +188,7 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
     if headless:
         # bloody stump at the neck
         c.drawCircle(J["neck"][0], J["neck"][1], W * 0.55, fill(col(flat or "#7a0a10", alpha)))
-        style = dict(style, band=None, hat=None, horns=None, eye=None)
+        style = dict(style, band=None, hat=None, horns=None, eye=None, helm=None, topknot=None)
     else:
         c.drawCircle(hx, hy, R, fill(col(body, alpha)))
     a = p["H"] + rot
@@ -197,6 +222,13 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
             m = (b[0] + rx * 9 * S * side + ux * 9 * S, b[1] + ry * 9 * S * side + uy * 9 * S)
             t = (m[0] + ux * 9 * S - rx * 2 * S * side, m[1] + uy * 9 * S - ry * 2 * S * side)
             polyline(c, [b, m, t], stroke(col(hc, alpha), 4.0 * S))
+    if style.get("topknot"):
+        draw_topknot(c, hx, hy, ux, uy, rx, ry, R, S, style["body"], style.get("band"), alpha, flat)
+    if style.get("helm"):
+        draw_helm(c, hx, hy, ux, uy, rx, ry, R, S, style, alpha, flat)
+    if style.get("shield") and p.get("noshield", 0) < 0.5:
+        ctr, up, ac = shield_frame(J)
+        draw_shield(c, ctr, up, ac, S, style, alpha, flat)
     if style.get("eye"):
         ex, ey = hx + J["facing"] * 0 + (d(a + 90)[0] * J["facing"]) * R * 0.45 + ux * R * 0.15, \
             hy + d(a + 90)[1] * R * 0.45 + uy * R * 0.15
@@ -207,3 +239,130 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         draw_sword(c, J, flat or style["steel"], flat or "#222222", alpha,
                    p.get("broken", 0), style.get("sword", "katana"))
     polyline(c, [J["sho"], J["elf"], J["haf"]], pf)
+
+
+# ---------------------------------------------------------------- knight gear
+def shield_frame(J):
+    """Center of the shield on the back forearm, its long axis (narrow end
+    down) and its across axis, in world coords."""
+    S = J["size"]
+    elb, hab = J["elb"], J["hab"]
+    fx_, fy_ = hab[0] - elb[0], hab[1] - elb[1]
+    L = max(1e-6, math.hypot(fx_, fy_))
+    # forearm angle in the fighter's frame: 0 = up, 90 = forward
+    a_f = math.degrees(math.atan2(fx_ * J["facing"], fy_))
+    a_s = max(-35.0, min(45.0, a_f * 0.45)) + J["p"].get("rot", 0)
+    ax, ay = d(a_s)
+    ax *= J["facing"]
+    fwd = (J["facing"] * 7 * S, 0)
+    cx = hab[0] - fx_ / L * 4 * S + fwd[0] - ax * 6 * S
+    cy = hab[1] - fy_ / L * 4 * S - ay * 6 * S
+    return (cx, cy), (ax, ay), (ay, -ax)
+
+
+def shield_path(center, up, across, S, half=0):
+    """Kite shield; half = -1 / +1 draws only that side (when it is split)."""
+    cx, cy = center
+    ux, uy = up
+    rx, ry = across
+    H1, H2, Wd = 24 * S, 36 * S, 17 * S
+    top_l = (cx + ux * H1 - rx * Wd, cy + uy * H1 - ry * Wd)
+    top_r = (cx + ux * H1 + rx * Wd, cy + uy * H1 + ry * Wd)
+    top_m = (cx + ux * (H1 + 3 * S), cy + uy * (H1 + 3 * S))
+    mid_l = (cx - rx * Wd * 1.02, cy - ry * Wd * 1.02)
+    mid_r = (cx + rx * Wd * 1.02, cy + ry * Wd * 1.02)
+    tip = (cx - ux * H2, cy - uy * H2)
+    p = skia.Path()
+    if half == 0:
+        p.moveTo(*top_l)
+        p.quadTo(top_m[0], top_m[1], *top_r)
+        p.quadTo(mid_r[0] + ux * 4 * S, mid_r[1] + uy * 4 * S, *mid_r)
+        p.quadTo(cx + rx * Wd * 0.6 - ux * H2 * 0.55, cy + ry * Wd * 0.6 - uy * H2 * 0.55, *tip)
+        p.quadTo(cx - rx * Wd * 0.6 - ux * H2 * 0.55, cy - ry * Wd * 0.6 - uy * H2 * 0.55, *mid_l)
+        p.quadTo(mid_l[0] + ux * 4 * S, mid_l[1] + uy * 4 * S, *top_l)
+    else:
+        sgn = half
+        tl = top_l if sgn < 0 else top_r
+        ml = mid_l if sgn < 0 else mid_r
+        p.moveTo(*top_m)
+        p.lineTo(*tl)
+        p.quadTo(ml[0] + ux * 4 * S, ml[1] + uy * 4 * S, *ml)
+        p.quadTo(cx + sgn * rx * Wd * 0.6 - ux * H2 * 0.55, cy + sgn * ry * Wd * 0.6 - uy * H2 * 0.55, *tip)
+        # jagged split line back up the middle
+        for k, u in enumerate((0.75, 0.45, 0.15, -0.2, -0.5, -0.8)):
+            j = (3.5 * S if k % 2 else -2.5 * S) * sgn
+            p.lineTo(cx - ux * H2 * u + rx * j, cy - uy * H2 * u + ry * j)
+    p.close()
+    return p
+
+
+def draw_shield(c, center, up, across, S, style, alpha=1.0, flat=None, half=0):
+    p = shield_path(center, up, across, S, half)
+    c.drawPath(p, fill(col(flat or style.get("shield", "#2257b8"), alpha)))
+    rim = flat or style.get("rim", "#e3b341")
+    c.drawPath(p, stroke(col(flat or "#141820", alpha), 5.0 * S))
+    c.drawPath(p, stroke(col(rim, alpha), 2.6 * S))
+    if flat:
+        return
+    cx, cy = center
+    ux, uy = up
+    rx, ry = across
+    # gold cross emblem
+    cs = col(style.get("rim", "#e3b341"), alpha)
+    if half <= 0 or True:
+        a0 = (cx + ux * 17 * S, cy + uy * 17 * S)
+        a1 = (cx - ux * 22 * S, cy - uy * 22 * S)
+        b0 = (cx + ux * 4 * S - rx * 11 * S, cy + uy * 4 * S - ry * 11 * S)
+        b1 = (cx + ux * 4 * S + rx * 11 * S, cy + uy * 4 * S + ry * 11 * S)
+        c.save()
+        c.clipPath(p, skia.ClipOp.kIntersect, True)
+        line(c, a0, a1, stroke(cs, 4.2 * S, skia.Paint.kButt_Cap))
+        line(c, b0, b1, stroke(cs, 4.2 * S, skia.Paint.kButt_Cap))
+        c.restore()
+
+
+def draw_helm(c, hx, hy, ux, uy, rx, ry, R, S, style, alpha=1.0, flat=None):
+    """Great helm: flat-topped steel bucket, eye slit, breaths, plume.
+
+    (ux, uy) points up out of the head, (rx, ry) points forward."""
+    steel = flat or style.get("helm", "#c5ccd6")
+    dark = flat or "#141820"
+    Hh, Hw = R * 1.22, R * 1.12
+
+    def P(a, b):
+        return (hx + rx * a + ux * b, hy + ry * a + uy * b)
+
+    p = skia.Path()
+    p.moveTo(*P(-Hw, -Hh * 0.95))
+    p.lineTo(*P(-Hw, Hh * 0.55))
+    p.quadTo(*P(-Hw * 0.9, Hh * 1.05), *P(0, Hh * 1.08))
+    p.quadTo(*P(Hw * 0.95, Hh * 1.05), *P(Hw * 1.05, Hh * 0.5))
+    p.lineTo(*P(Hw * 1.1, -Hh * 0.7))
+    p.quadTo(*P(Hw * 0.9, -Hh * 1.05), *P(Hw * 0.3, -Hh * 1.0))
+    p.close()
+    if style.get("plume"):
+        pc = col(flat or style["plume"], alpha)
+        base = P(-Hw * 0.2, Hh * 1.05)
+        for k, (bx_, by_, w) in enumerate(((-1.6, 1.9, 5.5), (-2.2, 1.4, 4.5), (-2.4, 0.8, 3.6))):
+            pp = skia.Path()
+            pp.moveTo(*base)
+            m = P(Hw * (bx_ * 0.35), Hh * (by_ + 0.25))
+            e = P(Hw * bx_, Hh * by_)
+            pp.quadTo(m[0], m[1], e[0], e[1])
+            c.drawPath(pp, stroke(pc, w * S))
+    c.drawPath(p, fill(col(steel, alpha)))
+    c.drawPath(p, stroke(col(dark, alpha), 2.4 * S))
+    # eye slit and a vertical nose bar
+    line(c, P(-Hw * 0.15, Hh * 0.22), P(Hw * 1.05, Hh * 0.22), stroke(col(dark, alpha), 3.4 * S, skia.Paint.kButt_Cap))
+    line(c, P(Hw * 0.55, Hh * 0.6), P(Hw * 0.55, -Hh * 0.9), stroke(col(dark, alpha * 0.55), 1.6 * S))
+    if not flat:
+        for a, b in ((0.8, -0.3), (0.8, -0.55), (0.62, -0.42)):
+            q = P(Hw * a, Hh * b)
+            c.drawCircle(q[0], q[1], 1.3 * S, fill(col(dark, alpha)))
+
+
+def draw_topknot(c, hx, hy, ux, uy, rx, ry, R, S, color, band, alpha=1.0, flat=None):
+    k = (hx + ux * R * 0.95 - rx * R * 0.45, hy + uy * R * 0.95 - ry * R * 0.45)
+    c.drawCircle(k[0], k[1], 5.2 * S, fill(col(flat or color, alpha)))
+    e = (k[0] + ux * 4 * S - rx * 6 * S, k[1] + uy * 4 * S - ry * 6 * S)
+    line(c, k, e, stroke(col(flat or color, alpha), 4.2 * S))

@@ -327,7 +327,7 @@ def edit_kit(put, rng, t0, kind, kw):
             put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.2), 0.55 * v)
         return True
     if kind == "hit":
-        blunt = kw.get("part") == "hilt0"
+        blunt = kw.get("part") in ("hilt0", "hab", "ftf")
         if blunt:
             put(t0, sample("punch_hard"), 0.9 * v)
             put(t0, fade(sample("body_thud"), 0, 0.3, 1.0), 0.7 * v)
@@ -395,6 +395,41 @@ def edit_kit(put, rng, t0, kind, kw):
         return True
     if kind == "heart":
         put(t0, fade(sample("heartbeat_real"), 0, 0.2, 1.0), 1.0 * v)
+        return True
+    if kind == "armor":
+        # blade skids off plate armour: bright ring + dull body knock
+        put(t0, pitch(pick(rng, METAL), 1.15 * r), 0.8 * v)
+        put(t0, pitch(pick(rng, RINGS), 1.25 * r), 0.55 * v)
+        put(t0, pitch(sample("metal_heavy_1"), 1.1 * r), 0.45 * v)
+        put(t0, pitch(pick(rng, PUNCH), 1.0 * r), 0.4 * v)
+        return True
+    if kind in ("shieldhit", "shieldbang"):
+        # sword into a wooden, iron-rimmed shield: deep knock + rim ring
+        put(t0, pitch(pick(rng, PUNCH), 0.7 * r), 0.95 * v)
+        put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.75 * r), 0.7 * v)
+        put(t0, pitch(sample("metal_heavy_0"), 0.9 * r), 0.45 * v)
+        put(t0, pitch(pick(rng, RINGS), 0.8 * r), 0.25 * v)
+        if big:
+            put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.0), 0.5 * v)
+        return True
+    if kind == "shieldbreak":
+        put(t0, snap(rng, 1.5))
+        put(t0, pitch(sample("metal_heavy_2"), 0.75), 0.9)
+        put(t0, pitch(pick(rng, PUNCH), 0.6), 1.0)
+        put(t0, pitch(sample("vine_boom"), 1.0), 0.55)
+        put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.4), 0.7)
+        put(t0, pitch(pick(rng, RINGS), 0.7), 0.5)
+        for dl, g in ((0.42, 0.5), (0.58, 0.35), (0.7, 0.25)):     # halves hitting the ground
+            put(t0 + dl, pitch(sample("metal_heavy_1"), 1.3 * rng.uniform(0.9, 1.1)), g)
+        return True
+    if kind == "step" and kw.get("armor"):
+        put(t0, pitch(pick(rng, ["step_0", "step_1", "step_2"]), 0.7 * r), 0.75 * v)
+        put(t0, pitch(sample("metal_latch"), 0.9 * r), 0.22 * v)
+        put(t0, pitch(sample("metal_click"), 0.75 * r), 0.18 * v)
+        return True
+    if kind == "roar":
+        put(t0, fade(pitch(sample("dark_riser"), 1.0), 0.05, 0.3), 0.5 * v)
+        put(t0, pitch(sample("vine_boom"), 0.8), 0.5 * v)
         return True
     return False
 
