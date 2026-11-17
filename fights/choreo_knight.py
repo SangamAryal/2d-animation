@@ -51,6 +51,8 @@ pose("k_rise_wind", T=24, H=18, uaf=195, faf=225, sw=228, grip=0, uab=120, fab=6
      thf=130, shf=178, thb=230, shb=212)
 pose("k_rise", T=-8, H=-6, uaf=40, faf=40, sw=20, grip=0, uab=140, fab=80,
      thf=150, shf=180, thb=205, shb=192)
+pose("k_press", T=26, H=18, uaf=55, faf=48, sw=122, grip=0, uab=150, fab=90,
+     thf=112, shf=176, thb=244, shb=244)
 pose("k_bang_up", T=-4, H=-6, uaf=30, faf=10, sw=-10, grip=0, uab=118, fab=40,
      thf=152, shf=182, thb=208, shb=194)
 pose("k_bang", T=4, H=2, uaf=128, faf=165, sw=200, grip=0, uab=118, fab=40,
@@ -70,20 +72,36 @@ def build(knight_wins=False, armoured=False):
     R = [0]                # samurai's accumulated flip rotation (keeps rot continuous)
     NS = [0]               # knight has lost the shield
 
+    # v3 (knight wins) is longer: an extra exchange is inserted at T0 and
+    # everything keyed after it slides D seconds later.
+    LONG = knight_wins
+    T0, D = 7.95, 3.2
+    RAW = [False]
+
+    def S(t):
+        return t + D if (LONG and t >= T0 and not RAW[0]) else t
+
     def E(t, kind, **kw):
-        ev.append((t, kind, kw))
+        for k in ("a0", "a1", "stop_at", "duck_at"):
+            if k in kw:
+                kw[k] = S(kw[k])
+        ev.append((S(t), kind, kw))
+
+    _af, _bf = A.face, B.face
+    A.face = lambda t, f: _af(S(t), f)
+    B.face = lambda t, f: _bf(S(t), f)
 
     def stop(t, d):
         E(t, "hitstop", dur=d)
 
     def AK(t, name, x, e="io", **kw):
         kw["rot"] = R[0] + kw.get("rot", 0)
-        A.key(t, name, x, e, **kw)
+        A.key(S(t), name, x, e, **kw)
 
     def BK(t, name, x, e="io", **kw):
         if NS[0]:
             kw.setdefault("noshield", 1)
-        B.key(t, name, x, e, **kw)
+        B.key(S(t), name, x, e, **kw)
 
     # ======================================================= intro (0 - 2.6)
     A.key(0.0, "swalk1", -470)
@@ -125,7 +143,12 @@ def build(knight_wins=False, armoured=False):
     E(1.18, "drum", v=0.8)
     E(2.45, "banner", text="FIGHT!")
     E(2.45, "fight")
-    E(2.45, "bed", stop_at=11.2, gain=0.32)
+    if LONG:
+        # Kordhell "Murder In My Mind": its drop (17.03 s) lands on the kill
+        E(2.45, "song", name="song_murder_in_my_mind", drop=17.03, duck_at=11.25,
+          pre=0.34, duck=0.12, post=0.9)
+    else:
+        E(2.45, "bed", stop_at=11.2, gain=0.32)
 
     # ======================================================= round 1: the shield
     # (2.6 - 5.4) a four-cut flurry dies on the shield, shield bash, overhead slam
@@ -251,6 +274,8 @@ def build(knight_wins=False, armoured=False):
     E(7.74, "step", who="B", v=0.8, armor=True)
     BK(7.95, "k_shield_up", bx - 90)
     bx -= 90    # -30
+    if LONG:
+        _extra_exchange(AK, BK, E, stop, RAW, T0, ax, bx)
 
     # ======================================================= round 3: break the shield
     # (8.0 - 11.0) jumping cut splits the shield, two parries, kick, armpit cut
@@ -363,7 +388,9 @@ def build(knight_wins=False, armoured=False):
     R[0] += 360
     BK(t_c + 0.30, "k_slam", kx, dy=-2)
     if knight_wins:
-        return _knight_ending(A, B, E, AK, BK, stop, t_c, xl, kx, ev, knight)
+        d = _knight_ending(A, B, E, AK, BK, stop, t_c, xl, kx, ev, knight)
+        d["end"] = S(d["end"])
+        return d
     # silence, then the sword goes home and the head comes off
     t_brk = t_c + 1.45
     AK(t_c + 0.75, "iai_hold", xl + 2)
@@ -389,6 +416,68 @@ def build(knight_wins=False, armoured=False):
                 title=(("SAMURAI", RED), ("KNIGHT", BLUE)),
                 hp=[("A", "SAMURAI", RED), ("B", "KNIGHT", BLUE)],
                 springy=True)
+
+
+def _extra_exchange(AK, BK, E, stop, RAW, T0, ax, bx):
+    """Inserted exchange (v3): shield, a low cut that sparks off the greaves,
+    a blade lock that grinds in slow motion, and a shield bash out of it."""
+    RAW[0] = True
+    T = lambda u: T0 + u
+    cx = bx - 150                     # where the samurai fights from
+    AK(T(0.05), "guard_low", ax)
+    AK(T(0.16), "crouch", ax)
+    AK(T(0.30), "dash", cx, "lin")
+    E(T(0.17), "zip", v=1.0)
+    E(T(0.17), "dust", x=ax, v=0.8)
+    BK(T(0.05), "k_guard", bx)
+    BK(T(0.22), "k_brace", bx)
+    # cut into the shield
+    AK(T(0.36), "side_wind", cx + 10, "out")
+    AK(T(0.44), "side_cut", cx + 22, "snap")
+    E(T(0.44), "shieldhit", by="A", on="B", v=1.0)
+    stop(T(0.44), 0.05)
+    BK(T(0.46), "k_brace", bx + 6, "snap")
+    # drops low and cuts the leg: sparks off the greave
+    AK(T(0.52), "crouch", cx + 25, "snap", T=50, H=40, sw=-40)
+    AK(T(0.60), "sweep", cx + 40, "snap")
+    E(T(0.60), "armor", by="A", on="B", v=1.0, dmg=2)
+    stop(T(0.60), 0.07)
+    BK(T(0.62), "k_guard", bx + 10, "snap", T=-8, H=-6)
+    # knight's rising cut, samurai leans out of it
+    BK(T(0.70), "k_rise_wind", bx + 8, "back")
+    BK(T(0.82), "k_rise", bx - 10, "snap")
+    AK(T(0.72), "crouch", cx + 30)
+    AK(T(0.86), "stagger", cx - 50, "out")
+    E(T(0.82), "gust", x=cx + 20, v=0.9)
+    # overhead into a blade lock
+    BK(T(1.00), "k_over_wind", bx - 5, "back")
+    BK(T(1.16), "k_press", bx - 40, "snap")
+    AK(T(1.10), "block_high", cx - 40, "snap")
+    E(T(1.16), "clash", v=1.1, big=True)
+    stop(T(1.16), 0.10)
+    E(T(1.22), "scrape", dur=0.75)
+    E(T(1.22), "slowmo", a0=T(1.22), a1=T(1.95), rate=0.4)
+    AK(T(1.22), "block_high", cx - 42)
+    AK(T(1.95), "block_high", cx - 50, "lin", T=14, H=14, dy=-12)    # pushed down
+    BK(T(1.22), "k_press", bx - 42)
+    BK(T(1.95), "k_press", bx - 52, "lin", T=34, H=26, sw=128, uaf=62)
+    # shield bash breaks the lock
+    BK(T(2.05), "k_bash_wind", bx - 40, "back")
+    BK(T(2.17), "k_bash", bx - 110, "snap")
+    E(T(2.17), "hit", by="B", on="A", v=1.1, big=True, dmg=6, part="hab")
+    stop(T(2.17), 0.12)
+    AK(T(2.06), "block_high", cx - 50, dy=-12)
+    AK(T(2.18), "recoil", cx - 55, "snap")
+    AK(T(2.45), "recoil", cx - 150, "out", air=28)
+    AK(T(2.70), "stagger", ax + 10, "out")
+    E(T(2.70), "skid", x=ax + 10, v=1.1)
+    AK(T(3.05), "guard_low", ax)
+    BK(T(2.55), "k_guard", bx - 90)
+    BK(T(2.85), "k_walk1", bx - 50)
+    E(T(2.85), "step", who="B", v=0.8, armor=True)
+    BK(T(3.10), "k_walk2", bx - 15)
+    E(T(3.10), "step", who="B", v=0.8, armor=True)
+    RAW[0] = False
 
 
 def _knight_ending(A, B, E, AK, BK, stop, t_c, xl, kx, ev, knight):
@@ -420,7 +509,7 @@ def _knight_ending(A, B, E, AK, BK, stop, t_c, xl, kx, ev, knight):
     E(t_k - 0.02, "slowmo", a0=t_k - 0.16, a1=t_k - 0.01, rate=0.3)
     E(t_k, "decap", who="A", by="B")
     E(t_k + 0.01, "dmg", who="A", by="B", amt=100, big=True)
-    E(t_k + 0.01, "kill")
+    E(t_k + 0.01, "kill", song=True)
     stop(t_k, 0.10)
     AK(t_k + 0.01, "iai", xl + 4, "snap", headless=1)
     AK(t_k + 0.50, "kneel", xl + 10, "in", headless=1, sheath=1)

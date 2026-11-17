@@ -279,6 +279,8 @@ class Renderer:
                 self.fx.append((vt, k, dict(kw, seed=seed)))
                 if k == "charge":
                     self.cues.append((vt, "riser", dict(dur=kw["dur"])))
+            if "duck_at" in kw:
+                kw = dict(kw, vduck=video_time(self.frames, kw["duck_at"]))
             if "stop_at" in kw:
                 kw = dict(kw, vstop=video_time(self.frames, kw["stop_at"]))
             self.cues.append((vt, k, kw))

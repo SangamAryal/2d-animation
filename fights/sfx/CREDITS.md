@@ -21,3 +21,13 @@ not a concern for this channel, so these are NOT all public domain:
   `slap`, `punch_hard`, `body_thud`, `orchestra_hit`, `swipes`, `heartbeat_real`, `energy_burst`:
   from github.com/sarpongandrews3333-eng/anime-sound-effects-library (commit 1d63ccc), mixed sources.
 - `phonk_4`, `phonk_6`: phonk edit clips from github.com/coah80/phonkedit-desktop (commit 3b83f0e).
+
+Fight 06 v3 (samurai vs knight). Not public domain; Sangam said copyrighted sounds are fine:
+- `steel_*`, `cut_flesh_*`, `impact_flesh_*`, `bonebreak`, `shield_knock_*`, `armor_step_*`, `sword_drop`,
+  `unsheathe_long`: "Medieval Fantasy Audio Bundle" (Unity asset) via github.com/JakeJayB/Immortal-Gen-Tactics (Git LFS).
+- `katana_cut`: github.com/IoriBranford/nokorun. `sword_slash_hd`: "Sword Slash Sound Effect HD" via
+  github.com/MarvsHyuuu/BattleMath-Game-Code. `decapitation`: SoundBible via github.com/LucHayward/Frost-Capstone.
+  `big_impact_swoosh`: newlocknew (freesound, CC-BY) via github.com/indubitablygregarious/immerse-yourself.
+- Songs: `song_murder_in_my_mind` = Kordhell "Murder In My Mind" (via github.com/ZHACHI-boop/Game);
+  `song_after_dark` = Mr.Kitty "After Dark" (via github.com/forpc1428-eng/SONGS). Copyrighted.
+  LFS files download from media.githubusercontent.com/media/OWNER/REPO/HEAD/PATH.

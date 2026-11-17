@@ -317,8 +317,10 @@ def edit_kit(put, rng, t0, kind, kw):
         put(t0, sample("bass_drop"), 0.75)
         put(t0, sample("orchestra_hit"), 0.45)
         return True
+    STEEL = ["steel_1", "steel_2", "steel_3", "steel_4", "steel_5", "steel_6", "steel_7"]
     if kind == "clash":
-        put(t0, pitch(pick(rng, RINGS), (0.85 if big else 1.0) * r), 0.85 * v)
+        put(t0, pitch(pick(rng, STEEL), (0.9 if big else 1.0) * r), 0.9 * v)
+        put(t0, pitch(pick(rng, RINGS), (0.85 if big else 1.0) * r), 0.6 * v)
         put(t0, pitch(pick(rng, METAL), r), 0.55 * v)
         put(t0, fade(pitch(sample("slice_ring"), 1.1 * r), 0, 0.3, 0.9 if big else 0.45),
             (0.5 if big else 0.28) * v)
@@ -329,16 +331,28 @@ def edit_kit(put, rng, t0, kind, kw):
     if kind == "hit":
         blunt = kw.get("part") in ("hilt0", "hab", "ftf")
         if blunt:
-            put(t0, sample("punch_hard"), 0.9 * v)
+            put(t0, pitch(pick(rng, ["impact_flesh_1", "impact_flesh_2", "impact_flesh_3"]), r), 0.9 * v)
+            put(t0, pitch(sample("bonebreak"), r), 0.45 * v)
+            put(t0, sample("punch_hard"), 0.7 * v)
             put(t0, fade(sample("body_thud"), 0, 0.3, 1.0), 0.7 * v)
             put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.85 * r), 0.6 * v)
         else:
-            put(t0, fade(pitch(sample("sword_sling"), 1.1 * r), 0, 0.3, 0.7), 0.55 * v)
-            put(t0, pitch(sample("splat"), 1.05 * r), 0.75 * v)
+            put(t0 - 0.02, pitch(sample("katana_cut"), 1.0 * r), 0.8 * v)
+            put(t0, pitch(pick(rng, ["cut_flesh_1", "cut_flesh_2", "cut_flesh_3"]), r), 0.8 * v)
+            put(t0, fade(pitch(sample("sword_sling"), 1.1 * r), 0, 0.3, 0.7), 0.35 * v)
+            put(t0, pitch(sample("splat"), 1.05 * r), 0.5 * v)
             put(t0, pitch(sample("slap"), 0.85 * r), 0.45 * v)
             put(t0, pitch(pick(rng, PUNCH), 1.1 * r), 0.45 * v)
         if big:
             put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.0), 0.6 * v)
+        return True
+    if kind == "decap":
+        put(t0 - 0.05, sample("sword_slash_hd"), 1.0)
+        put(t0, sample("decapitation"), 1.0)
+        put(t0, pitch(sample("cut_flesh_1"), 0.85), 0.8)
+        return True
+    if kind == "draw":
+        put(t0 - 0.1, sample("unsheathe_long"), 0.9 * v)
         return True
     if kind == "dmg":
         put(t0, pitch(sample("splat"), 0.8), 1.0)
@@ -347,7 +361,8 @@ def edit_kit(put, rng, t0, kind, kw):
     if kind == "kill":
         put(t0, fade(sample("impact_transition"), 0, 0.6, 3.0), 0.9)
         put(t0, sample("cinematic_boom"), 0.8)
-        put(t0 + 0.25, fade(sample("phonk_6"), 0.02, 0.6), 1.0)
+        if not kw.get("song"):
+            put(t0 + 0.25, fade(sample("phonk_6"), 0.02, 0.6), 1.0)
         return True
     if kind == "bed":
         # phonk loop under the fight: 8-beat loop of phonk_4, crossfaded
@@ -398,14 +413,17 @@ def edit_kit(put, rng, t0, kind, kw):
         return True
     if kind == "armor":
         # blade skids off plate armour: bright ring + dull body knock
-        put(t0, pitch(pick(rng, METAL), 1.15 * r), 0.8 * v)
+        put(t0, pitch(pick(rng, STEEL), 1.1 * r), 0.9 * v)
+        put(t0, pitch(pick(rng, METAL), 1.15 * r), 0.5 * v)
         put(t0, pitch(pick(rng, RINGS), 1.25 * r), 0.55 * v)
         put(t0, pitch(sample("metal_heavy_1"), 1.1 * r), 0.45 * v)
         put(t0, pitch(pick(rng, PUNCH), 1.0 * r), 0.4 * v)
         return True
     if kind in ("shieldhit", "shieldbang"):
         # sword into a wooden, iron-rimmed shield: deep knock + rim ring
-        put(t0, pitch(pick(rng, PUNCH), 0.7 * r), 0.95 * v)
+        put(t0, pitch(pick(rng, ["shield_knock_1", "shield_knock_2", "shield_knock_3"]), r), 0.95 * v)
+        put(t0, pitch(pick(rng, STEEL), 0.8 * r), 0.35 * v)
+        put(t0, pitch(pick(rng, PUNCH), 0.7 * r), 0.6 * v)
         put(t0, pitch(sample(f"blunt_{rng.integers(1, 5)}"), 0.75 * r), 0.7 * v)
         put(t0, pitch(sample("metal_heavy_0"), 0.9 * r), 0.45 * v)
         put(t0, pitch(pick(rng, RINGS), 0.8 * r), 0.25 * v)
@@ -413,6 +431,8 @@ def edit_kit(put, rng, t0, kind, kw):
             put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.0), 0.5 * v)
         return True
     if kind == "shieldbreak":
+        put(t0, sample("big_impact_swoosh")[int(0.6 * SR):], 0.8)
+        put(t0, pitch(sample("shield_knock_2"), 0.8), 1.0)
         put(t0, snap(rng, 1.5))
         put(t0, pitch(sample("metal_heavy_2"), 0.75), 0.9)
         put(t0, pitch(pick(rng, PUNCH), 0.6), 1.0)
@@ -423,15 +443,41 @@ def edit_kit(put, rng, t0, kind, kw):
             put(t0 + dl, pitch(sample("metal_heavy_1"), 1.3 * rng.uniform(0.9, 1.1)), g)
         return True
     if kind == "step" and kw.get("armor"):
-        put(t0, pitch(pick(rng, ["step_0", "step_1", "step_2"]), 0.7 * r), 0.75 * v)
-        put(t0, pitch(sample("metal_latch"), 0.9 * r), 0.22 * v)
-        put(t0, pitch(sample("metal_click"), 0.75 * r), 0.18 * v)
+        put(t0, pitch(pick(rng, ["armor_step_1", "armor_step_2", "armor_step_3", "armor_step_4"]), r), 0.9 * v)
+        put(t0, pitch(pick(rng, ["step_0", "step_1", "step_2"]), 0.7 * r), 0.4 * v)
         return True
     if kind == "roar":
         put(t0, fade(pitch(sample("dark_riser"), 1.0), 0.05, 0.3), 0.5 * v)
         put(t0, pitch(sample("vine_boom"), 0.8), 0.5 * v)
         return True
     return False
+
+
+def song(kw, t_in, t_drop, dur):
+    """A full track laid under the fight so its drop lands exactly on the kill.
+
+    Fades in at t_in (from wherever the track is at that moment), ducks under
+    the climax from vduck until the drop, then plays out loud and fades at the end."""
+    x = sample(kw["name"])
+    out = np.zeros(int((dur + 1) * SR))
+    start = t_drop - kw["drop"]          # video time where the track's 0:00 sits
+    i0 = int(max(t_in, start + kw.get("skip", 0.0)) * SR)
+    for i in range(i0, len(out), SR):
+        j = i - int(start * SR)
+        n = min(SR, len(out) - i, len(x) - j)
+        if n <= 0 or j < 0:
+            break
+        out[i:i + n] = x[j:j + n]
+    t = np.arange(len(out)) / SR
+    pre, duck, post = kw.get("pre", 0.30), kw.get("duck", 0.10), kw.get("post", 0.85)
+    g = np.where(t < t_drop, pre, post)
+    if kw.get("vduck"):
+        a = kw["vduck"]
+        ramp = np.clip((t - a) / 0.6, 0, 1)
+        g = np.where((t >= a) & (t < t_drop), pre + (duck - pre) * ramp, g)
+    g *= np.clip((t - i0 / SR) / 0.4, 0, 1)                 # fade in
+    g *= np.clip((dur - t) / 1.2, 0, 1)                     # fade out
+    return out * g
 
 
 def mix(cues, dur, seed=7, kit="classic"):
@@ -458,9 +504,13 @@ def mix(cues, dur, seed=7, kit="classic"):
     GLASS_H = ["glass_heavy_0", "glass_heavy_1", "glass_heavy_2"]
     GLASS_M = ["glass_medium_0", "glass_medium_1"]
     GLASS_L = ["glass_light_0", "glass_light_1"]
+    kills = [t for t, k, _ in cues if k == "kill"]
     for t0, kind, kw in cues:
         v = kw.get("v", 1.0)
         r = rng.uniform(0.94, 1.06)
+        if kind == "song":
+            put(0, song(kw, t0, kills[0] if kills else t0 + 15, dur))
+            continue
         if kit == "edit" and edit_kit(put, rng, t0, kind, kw):
             continue
         if kind == "swoosh":
