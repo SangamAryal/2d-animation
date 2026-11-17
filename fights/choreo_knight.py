@@ -61,7 +61,9 @@ pose("k_charge2", "heavy_wind", T=8, thf=212, shf=272, thb=126, shb=180)
 pose("k_slam", "slam", T=52, H=44, sw=112)
 
 
-def build():
+def build(knight_wins=False, armoured=False):
+    knight = dict(KNIGHT, body="#a9b3c1", back="#727e8d", plate=True, tabard=BLUE,
+                  limb=9.5) if armoured else KNIGHT
     A = Track(facing=1)    # SAMURAI, starts left
     B = Track(facing=-1)   # KNIGHT, starts right
     ev = []
@@ -349,6 +351,9 @@ def build():
     t_c = t_s + 0.08
     AK(t_c - 0.01, "jump_tuck", kx - 10, "lin", air=165, rot=160, sheath=1, T=30)
     AK(t_c + 0.03, "iai_cut", kx + 15, "snap", air=165, rot=200, sheath=0)
+    if knight_wins:
+        # the draw rings off the great helm instead of the neck
+        E(t_c + 0.01, "armor", by="A", on="B", v=1.2, dmg=3)
     E(t_c, "iai", x0=ax, x1=kx + 150)
     E(t_c, "slowmo", a0=t_s - 0.10, a1=t_c - 0.01, rate=0.22)
     AK(t_c + 0.20, "iai_cut", kx + 110, "lin", air=90, rot=310)
@@ -357,6 +362,8 @@ def build():
     E(t_c + 0.30, "ground", x=xl, v=0.7)
     R[0] += 360
     BK(t_c + 0.30, "k_slam", kx, dy=-2)
+    if knight_wins:
+        return _knight_ending(A, B, E, AK, BK, stop, t_c, xl, kx, ev, knight)
     # silence, then the sword goes home and the head comes off
     t_brk = t_c + 1.45
     AK(t_c + 0.75, "iai_hold", xl + 2)
@@ -378,7 +385,58 @@ def build():
     end = t_brk + 4.2
     AK(end, "stand_sheathed", xl + 6)
     BK(end, "fallen", kx + 20, headless=1, sw=100)
-    return dict(fighters=[("B", B, KNIGHT), ("A", A, SAMURAI)], events=ev, end=end,
+    return dict(fighters=[("B", B, knight), ("A", A, SAMURAI)], events=ev, end=end,
+                title=(("SAMURAI", RED), ("KNIGHT", BLUE)),
+                hp=[("A", "SAMURAI", RED), ("B", "KNIGHT", BLUE)],
+                springy=True)
+
+
+def _knight_ending(A, B, E, AK, BK, stop, t_c, xl, kx, ev, knight):
+    """The samurai sheathes thinking it is over. Nothing falls. The knight
+    straightens up, turns, and takes his head while his back is turned."""
+    t_sh = t_c + 1.45
+    AK(t_c + 0.75, "iai_hold", xl + 2)
+    AK(t_c + 1.00, "sw_chiburi", xl + 4, "snap")
+    E(t_c + 1.00, "swoosh", v=0.8)
+    AK(t_sh - 0.30, "sheathing", xl + 4)
+    AK(t_sh, "stand_sheathed", xl + 6, "snap")
+    E(t_sh, "sheathe", final=True)
+    # ...silence. the knight is still standing
+    E(t_sh + 0.45, "heart", v=1.0)
+    BK(t_sh + 0.30, "k_slam", kx, dy=-2)
+    BK(t_sh + 0.70, "guard", kx + 10, "out")
+    E(t_sh + 0.70, "step", who="B", v=0.9, armor=True)
+    B.face(t_sh + 0.82, 1)
+    BK(t_sh + 0.82, "guard", kx + 12, "snap")
+    E(t_sh + 0.82, "stomp", x=kx + 12, v=0.7)
+    E(t_sh + 1.05, "heart", v=1.1)
+    # samurai hears the armour and starts to turn: too late
+    A.face(t_sh + 1.20, -1)
+    AK(t_sh + 1.12, "stand_sheathed", xl + 6, H=-10)
+    AK(t_sh + 1.20, "iai", xl + 4, "snap")
+    BK(t_sh + 1.00, "side_wind", kx + 40, "back")
+    t_k = t_sh + 1.24
+    BK(t_k, "side_cut", xl - 125, "snap")
+    E(t_k - 0.02, "slowmo", a0=t_k - 0.16, a1=t_k - 0.01, rate=0.3)
+    E(t_k, "decap", who="A", by="B")
+    E(t_k + 0.01, "dmg", who="A", by="B", amt=100, big=True)
+    E(t_k + 0.01, "kill")
+    stop(t_k, 0.10)
+    AK(t_k + 0.01, "iai", xl + 4, "snap", headless=1)
+    AK(t_k + 0.50, "kneel", xl + 10, "in", headless=1, sheath=1)
+    E(t_k + 0.50, "thud", v=0.8)
+    AK(t_k + 1.10, "fallen", xl + 30, "in", headless=1, sheath=1)
+    E(t_k + 1.10, "thud", v=1.0)
+    E(t_k + 1.10, "dust", x=xl + 60, v=1.0)
+    BK(t_k + 0.40, "side_cut", xl - 128)
+    BK(t_k + 1.00, "guard", xl - 140)
+    BK(t_k + 1.60, "high_wind", xl - 140, "back", T=-14, H=-16)   # raises the sword
+    E(t_k + 1.60, "roar", v=0.9)
+    E(t_k + 0.6, "winner", name="KNIGHT WINS", color=BLUE)
+    end = t_k + 4.2
+    AK(end, "fallen", xl + 30, headless=1, sheath=1)
+    BK(end, "high_wind", xl - 140, T=-14, H=-16)
+    return dict(fighters=[("B", B, knight), ("A", A, SAMURAI)], events=ev, end=end,
                 title=(("SAMURAI", RED), ("KNIGHT", BLUE)),
                 hp=[("A", "SAMURAI", RED), ("B", "KNIGHT", BLUE)],
                 springy=True)

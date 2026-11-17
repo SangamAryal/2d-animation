@@ -176,13 +176,26 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
     if tails and style.get("band") and not headless:
         polyline(c, tails[0], stroke(col(flat or style["band"], alpha), 3.6 * S))
         polyline(c, tails[1], stroke(col(flat or style["band"], alpha), 2.8 * S))
+    plate = style.get("plate") and not flat
+    if plate:
+        ol = stroke(col("#1d2430", alpha), W + 4.5 * S)
+        polyline(c, [J["sho"], J["elb"], J["hab"]], ol)
+        polyline(c, [J["hip"], J["knb"], J["ftb"]], ol)
     polyline(c, [J["sho"], J["elb"], J["hab"]], pb)
     polyline(c, [J["hip"], J["knb"], J["ftb"]], pb)
+    if plate:
+        plate_joints(c, J, ("elb", "knb", "hab"), back, S, alpha)
     if style.get("scabbard"):
         draw_scabbard(c, J, flat or style["scab"], flat or style["steel"],
                       flat or "#222222", p["sheath"] > 0.5, alpha)
-    line(c, J["hip"], J["neck"], stroke(col(body, alpha), W * style.get("torso", 1.0)))
-    polyline(c, [J["hip"], J["knf"], J["ftf"]], pf)
+    if plate:
+        polyline(c, [J["hip"], J["knf"], J["ftf"]], stroke(col("#1d2430", alpha), W + 4.5 * S))
+        polyline(c, [J["hip"], J["knf"], J["ftf"]], pf)
+        plate_joints(c, J, ("knf",), body, S, alpha)
+        draw_cuirass(c, J, style, S, alpha)
+    else:
+        line(c, J["hip"], J["neck"], stroke(col(body, alpha), W * style.get("torso", 1.0)))
+        polyline(c, [J["hip"], J["knf"], J["ftf"]], pf)
     hx, hy = J["head"]
     R = R_HEAD * S * style.get("head", 1.0)
     if headless:
@@ -238,7 +251,12 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
     elif p["sheath"] < 0.5 and not style.get("unarmed"):
         draw_sword(c, J, flat or style["steel"], flat or "#222222", alpha,
                    p.get("broken", 0), style.get("sword", "katana"))
+    if plate:
+        polyline(c, [J["sho"], J["elf"], J["haf"]], stroke(col("#1d2430", alpha), W + 4.5 * S))
     polyline(c, [J["sho"], J["elf"], J["haf"]], pf)
+    if plate:
+        plate_joints(c, J, ("elf", "haf"), body, S, alpha)
+        pauldron(c, J, body, S, alpha)
 
 
 # ---------------------------------------------------------------- knight gear
@@ -366,3 +384,98 @@ def draw_topknot(c, hx, hy, ux, uy, rx, ry, R, S, color, band, alpha=1.0, flat=N
     c.drawCircle(k[0], k[1], 5.2 * S, fill(col(flat or color, alpha)))
     e = (k[0] + ux * 4 * S - rx * 6 * S, k[1] + uy * 4 * S - ry * 6 * S)
     line(c, k, e, stroke(col(flat or color, alpha), 4.2 * S))
+
+
+# ---------------------------------------------------------------- plate armour
+def plate_joints(c, J, names, color, S, alpha=1.0):
+    """Couters, poleyns and gauntlets: round steel plates over the joints."""
+    for n in names:
+        x, y = J[n]
+        r = (7.5 if n.startswith("kn") else 6.5) * S
+        c.drawCircle(x, y, r, fill(col(color, alpha)))
+        c.drawCircle(x, y, r, stroke(col("#1d2430", alpha), 2.2 * S))
+        c.drawCircle(x - 1.5 * S, y + 1.5 * S, r * 0.35, fill(col("#ffffff", 0.45 * alpha)))
+
+
+def pauldron(c, J, color, S, alpha=1.0):
+    x, y = J["sho"]
+    nx, ny = J["neck"]
+    hx, hy = J["hip"]
+    L = max(1e-6, math.hypot(nx - hx, ny - hy))
+    ux, uy = (nx - hx) / L, (ny - hy) / L
+    cx, cy = x - ux * 4 * S, y - uy * 4 * S
+    r = 11.5 * S
+    p = skia.Path()
+    a0 = math.degrees(math.atan2(uy, ux))
+    p.addArc(skia.Rect(cx - r, cy - r, cx + r, cy + r), a0 - 95, 190)
+    p.close()
+    c.drawPath(p, fill(col(color, alpha)))
+    c.drawPath(p, stroke(col("#1d2430", alpha), 2.4 * S))
+    # lame lines
+    for k in (0.55, 0.8):
+        rr = r * k
+        q = skia.Path()
+        q.addArc(skia.Rect(cx - rr, cy - rr, cx + rr, cy + rr), a0 - 80, 160)
+        c.drawPath(q, stroke(col("#1d2430", alpha * 0.5), 1.4 * S))
+
+
+def draw_cuirass(c, J, style, S, alpha=1.0):
+    """Breastplate with a blue tabard and a skirt of plates (faulds)."""
+    hx, hy = J["hip"]
+    nx, ny = J["neck"]
+    L = max(1e-6, math.hypot(nx - hx, ny - hy))
+    ux, uy = (nx - hx) / L, (ny - hy) / L
+    rx, ry = uy * J["facing"], -ux * J["facing"]     # points forward
+    def P(a, b):  # a along spine from hip, b forward
+        return (hx + ux * a + rx * b, hy + uy * a + ry * b)
+    w = 11 * S
+    steel, dark = style["body"], "#1d2430"
+    # faulds: flared plate skirt over the hips
+    f = skia.Path()
+    f.moveTo(*P(6 * S, -w))
+    f.lineTo(*P(6 * S, w + 2 * S))
+    f.lineTo(*P(-16 * S, w + 7 * S))
+    f.lineTo(*P(-16 * S, -w - 6 * S))
+    f.close()
+    c.drawPath(f, fill(col(style.get("back", steel), alpha)))
+    c.drawPath(f, stroke(col(dark, alpha), 2.2 * S))
+    c.drawLine(*P(-5 * S, -w - 3 * S), *P(-5 * S, w + 4 * S), stroke(col(dark, alpha * 0.6), 1.5 * S))
+    # breastplate: rounded front (pigeon chest)
+    b = skia.Path()
+    b.moveTo(*P(4 * S, -w))
+    b.lineTo(*P(L - 2 * S, -w + 1 * S))
+    b.quadTo(*P(L + 2 * S, 0), *P(L - 3 * S, w + 1 * S))
+    b.quadTo(*P(L * 0.55, w + 6 * S), *P(4 * S, w + 1 * S))
+    b.close()
+    c.drawPath(b, fill(col(steel, alpha)))
+    # tabard over it
+    tc = style.get("tabard")
+    if tc:
+        t = skia.Path()
+        t.moveTo(*P(L - 6 * S, -w + 2 * S))
+        t.lineTo(*P(L - 6 * S, w - 1 * S))
+        t.lineTo(*P(-20 * S, w + 5 * S))
+        t.lineTo(*P(-20 * S, -w - 3 * S))
+        t.close()
+        c.save()
+        c.clipPath(b, skia.ClipOp.kIntersect, True)
+        c.drawPath(t, fill(col(tc, alpha)))
+        c.restore()
+        # lower tabard hangs over the faulds
+        lo = skia.Path()
+        lo.moveTo(*P(6 * S, -w + 2 * S))
+        lo.lineTo(*P(6 * S, w))
+        lo.lineTo(*P(-22 * S, w + 4 * S))
+        lo.lineTo(*P(-22 * S, -w - 2 * S))
+        lo.close()
+        c.drawPath(lo, fill(col(tc, alpha)))
+        c.drawPath(lo, stroke(col(dark, alpha), 2.0 * S))
+        # gold belt and cross
+        c.drawLine(*P(6 * S, -w - 1 * S), *P(6 * S, w + 2 * S), stroke(col("#e3b341", alpha), 3.4 * S))
+        c.drawLine(*P(L * 0.75, -3 * S), *P(L * 0.75, 6 * S), stroke(col("#e3b341", alpha), 2.6 * S))
+        c.drawLine(*P(L * 0.9, 1.5 * S), *P(L * 0.45, 1.5 * S), stroke(col("#e3b341", alpha), 2.6 * S))
+    c.drawPath(b, stroke(col(dark, alpha), 2.4 * S))
+    # gorget at the neck
+    g = P(L, 0)
+    c.drawCircle(g[0], g[1], 6.5 * S, fill(col(steel, alpha)))
+    c.drawCircle(g[0], g[1], 6.5 * S, stroke(col(dark, alpha), 2.0 * S))

@@ -24,7 +24,7 @@ from rig import R_HEAD, solve  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight"}
+FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win"}
 
 
 def typeface(weight="ExtraBold"):
