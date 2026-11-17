@@ -286,6 +286,10 @@ def edit_kit(put, rng, t0, kind, kw):
     METAL = ["metal_hit_1", "metal_hit_2", "metal_hit_3", "metal_hit_4"]
     PUNCH = ["punch_heavy_0", "punch_heavy_1", "punch_heavy_2"]
     if kind == "swoosh":
+        if kw.get("scythe"):
+            put(t0 - 0.05, pitch(sample(f"scythe_woosh_{rng.integers(1, 3)}"), 0.85 * r), 0.8 * v)
+            put(t0 - 0.06, pitch(sample(f"scythe_slash_{rng.integers(1, 4)}"), r), 0.55 * v)
+            return True
         if kw.get("spear"):
             put(t0 - 0.04, pitch(sample("clean_swoosh"), 1.25 * r), 0.55 * v)
             put(t0 - 0.03, pitch(pick(rng, SWISH), 0.9 * r), 0.5 * v)
@@ -301,6 +305,12 @@ def edit_kit(put, rng, t0, kind, kw):
     if kind == "zip":
         put(t0 - 0.02, fade(pitch(sample("fast_whoosh"), 1.1 * r), 0, 0.1, 0.5), 0.8 * v)
         put(t0, pitch(pick(rng, SWISH), 1.5 * r), 0.5 * v)
+        return True
+    if kind == "twirl" and kw.get("scythe"):
+        d_ = kw.get("dur", 0.6)
+        x = sample("scythe_spin")[:int((d_ + 0.3) * SR)]
+        put(t0, fade(x, 0.05, 0.25), 0.8 * v)
+        put(t0 + d_ - 0.05, pitch(sample("scythe_woosh_1"), 0.8), 0.6 * v)
         return True
     if kind == "twirl":
         d_ = kw.get("dur", 0.6)

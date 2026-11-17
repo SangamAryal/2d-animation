@@ -31,3 +31,6 @@ Fight 06 v3 (samurai vs knight). Not public domain; Sangam said copyrighted soun
 - Songs: `song_murder_in_my_mind` = Kordhell "Murder In My Mind" (via github.com/ZHACHI-boop/Game);
   `song_after_dark` = Mr.Kitty "After Dark" (via github.com/forpc1428-eng/SONGS). Copyrighted.
   LFS files download from media.githubusercontent.com/media/OWNER/REPO/HEAD/PATH.
+
+Fight 07 (scythe vs katana). Copyrighted, Sangam said that's fine:
+- `song_rave` = Dxrk ダーク "RAVE" (first 60 s; drop at 16.07 s), via github.com/gabriel654165/Very-Good-Cop.

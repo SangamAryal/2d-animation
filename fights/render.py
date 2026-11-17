@@ -21,10 +21,11 @@ import elements  # noqa: E402
 import powers  # noqa: E402
 from draw import col, draw_fighter, draw_helm, draw_shield, draw_spear_head, fill, shield_frame, stroke, polyline  # noqa: E402
 from rig import R_HEAD, solve  # noqa: E402
+from draw import scythe_points  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win"}
+FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe"}
 
 
 def typeface(weight="ExtraBold"):
@@ -105,6 +106,8 @@ class Fight:
         self.hp = d.get("hp", [])
         self.theme = d.get("theme", "day")
         self.springy = d.get("springy", False)
+        self.fluid = d.get("fluid", False)
+        self.feet = {}
         self.tracks = {i: (tr, st) for i, tr, st in self.fighters}
         self.ids = [i for i, _, _ in self.fighters]
         self.smooth = {}
@@ -129,14 +132,29 @@ class Fight:
                     imp[kw["who"]].append((t, dict(T=-500 * v, H=-1200 * v)))
             import motion
             for i, tr, st in self.fighters:
-                self.smooth[i] = motion.Smoothed(tr, self.end, imp[i], st.get("springs"))
+                self.smooth[i] = motion.Smoothed(tr, self.end, imp[i], st.get("springs"),
+                                                 fluid=self.fluid)
+        if self.fluid:
+            import feet
+            for i, tr, st in self.fighters:
+                self.feet[i] = feet.Planter(lambda t, i=i: self.joints_raw(i, t), self.end,
+                                            st.get("size", 1.0))
 
-    def joints(self, who, t):
+    def joints_raw(self, who, t):
         tr, st = self.tracks[who]
         p, x = (self.smooth[who] if who in self.smooth else tr).sample(t)
-        return solve(p, x, tr.facing(t), size=st.get("size", 1.0),
-                     blade=st.get("blade", 72), grip_off=st.get("grip_off", 9.0),
-                     butt=st.get("butt", 8.0))
+        J = solve(p, x, tr.facing(t), size=st.get("size", 1.0),
+                  blade=st.get("blade", 72), grip_off=st.get("grip_off", 9.0),
+                  butt=st.get("butt", 8.0))
+        if st.get("sword") == "scythe":
+            scythe_points(J, st)
+        return J
+
+    def joints(self, who, t):
+        J = self.joints_raw(who, t)
+        if who in self.feet:
+            self.feet[who].apply(J, t)
+        return J
 
     def other(self, who):
         return [i for i in self.ids if i != who][0]
@@ -329,14 +347,15 @@ class Renderer:
             if st.get("unarmed"):
                 continue
             heavy = st.get("sword") == "cleaver"
-            spear = st.get("sword") == "spear"
+            scythe = st.get("sword") == "scythe"
+            spear = st.get("sword") in ("spear", "scythe")
             last = -9
             dt = 1 / 240
             t = 0.0
             prev = None
             while t < f.end:
                 J = f.joints(who, t)
-                tip = J["tip"]
+                tip = J.get("blade_end", J["tip"])
                 if prev is not None and J["p"]["sheath"] < 0.5:
                     sp = math.hypot(tip[0] - prev[0], tip[1] - prev[1]) / dt
                     gap = 0.3 if heavy else 0.09
@@ -345,7 +364,8 @@ class Renderer:
                             not (spear and any(a <= t <= b for a, b in twirls)):
                         self.cues.append((video_time(self.frames, t), "swoosh",
                                           dict(v=min(1.0, 0.5 + sp / 6000),
-                                               heavy=heavy, spear=spear)))
+                                               heavy=heavy, spear=spear and not scythe,
+                                               scythe=scythe)))
                         last = t
                 prev = tip
                 t += dt
@@ -585,10 +605,15 @@ class Renderer:
         prev = None
         for k in range(N):
             J = f.joints(who, t - k * dt)
-            if J["p"]["sheath"] > 0.5:
+            if J["p"]["sheath"] > 0.5 or (k and J["facing"] != fc0):
                 break
-            g, tip = J["guard"], J["tip"]
-            base = (g[0] + (tip[0] - g[0]) * 0.3, g[1] + (tip[1] - g[1]) * 0.3)
+            if not k:
+                fc0 = J["facing"]
+            if "blade_end" in J:
+                tip, base = J["blade_end"], J["tip"]
+            else:
+                g, tip = J["guard"], J["tip"]
+                base = (g[0] + (tip[0] - g[0]) * 0.3, g[1] + (tip[1] - g[1]) * 0.3)
             if prev is not None:
                 pt, pb = prev
                 if math.hypot(tip[0] - pt[0], tip[1] - pt[1]) > 3.0:
@@ -611,6 +636,65 @@ class Renderer:
         for k in range(1, n + 1):
             J = f.joints(who, t - k * 0.011)
             draw_fighter(c, J, style, alpha=0.38 * (1 - k / (n + 1)), flat=flat)
+
+    SMEAR_SEGS = (("sho", "elf", "haf"), ("sho", "elb", "hab"), ("hip", "knf", "ftf"),
+                  ("hip", "knb", "ftb"))
+
+    def smear(self, c, who, i, t, style, flat):
+        """Smear frames (fluid fights): when a limb or the weapon swings far
+        between two frames (measured relative to the hips, so plain travel
+        doesn't count; ghosts handle that), fill the arc it swept with solid
+        in-betweens pinned to the current body, like a hand-drawn smear."""
+        if not self.f.fluid or i == 0:
+            return
+        f = self.f
+        tp = self.frames[i - 1]
+        if t - tp <= 1e-5:
+            return
+        J1, J0 = f.joints(who, t), f.joints(who, tp)
+        if J1["p"].get("hidden") or J1["facing"] != J0["facing"]:
+            return
+        S = J1["size"]
+        W = style.get("limb", 8.5) * S
+        thr = 14.0 * S
+        h1, h0 = J1["hip"], J0["hip"]
+
+        def rel(J, k):
+            return (J[k][0] - J["hip"][0], J[k][1] - J["hip"][1])
+
+        def dist(k):
+            a, b = rel(J1, k), rel(J0, k)
+            return math.hypot(a[0] - b[0], a[1] - b[1])
+        segs = [seg for seg in self.SMEAR_SEGS if max(dist(k) for k in seg[1:]) > thr]
+        armed = J1["p"]["sheath"] < 0.5 and not style.get("unarmed")
+        wkeys = ("w0", "tip") + (("blade_end",) if "blade_end" in J1 else ())
+        wd = max(dist(k) for k in wkeys) if armed else 0
+        if not segs and wd <= thr * 2:
+            return
+        n = int(min(10, max(2, max([wd] + [dist(sg[-1]) for sg in segs]) / (W * 0.8))))
+        Js = [f.joints(who, tp + (t - tp) * k / n) for k in range(n + 1)]
+
+        def P(K, k):   # point k of in-between K, pinned to the current hips
+            return (K[k][0] - K["hip"][0] + h1[0], K[k][1] - K["hip"][1] + h1[1])
+        body = flat or style["body"]
+        c.saveLayer(None, fill(col("#ffffff", 0.8)))
+        if armed and wd > thr * 2:
+            wc = flat or style.get("trail", "#ffffff")
+            for a, b in zip(Js[:-1], Js[1:]):
+                for k0, k1 in zip(wkeys[:-1], wkeys[1:]):
+                    path = skia.Path()
+                    path.moveTo(*P(a, k0))
+                    path.lineTo(*P(a, k1))
+                    path.lineTo(*P(b, k1))
+                    path.lineTo(*P(b, k0))
+                    path.close()
+                    c.drawPath(path, fill(col(wc, 0.8)))
+        for seg in segs:
+            pc = flat or (style["back"] if seg[1] in ("elb", "knb") else body)
+            pnt = stroke(col(pc), W * 0.9)
+            for K in Js[:-1]:
+                polyline(c, [P(K, k) for k in seg], pnt)
+        c.restore()
 
     def speed_lines(self, c, who, t, color):
         """Horizontal streaks behind a fighter moving very fast."""
@@ -1211,6 +1295,7 @@ class Renderer:
             c.save()
             c.translate(jx, jy)
             self.ghosts(c, who, t, style, flat or style.get("ghost", "#888888"))
+            self.smear(c, who, i, t, style, flat)
             J = f.joints(who, t)
             tails = self.tails(who, t) if style.get("band") else None
             self.tassel(c, who, t, flat)

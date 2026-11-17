@@ -203,7 +203,18 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         c.drawCircle(J["neck"][0], J["neck"][1], W * 0.55, fill(col(flat or "#7a0a10", alpha)))
         style = dict(style, band=None, hat=None, horns=None, eye=None, helm=None, topknot=None)
     else:
-        c.drawCircle(hx, hy, R, fill(col(body, alpha)))
+        sq = J.get("sq", 0.0)
+        if abs(sq) > 0.004:
+            # squash/stretch: the head goes oval along the neck
+            ux_, uy_ = J["head"][0] - J["neck"][0], J["head"][1] - J["neck"][1]
+            c.save()
+            c.translate(hx, hy)
+            c.rotate(math.degrees(math.atan2(uy_, ux_)))
+            a_, b_ = R * (1 + sq * 0.9), R * (1 - sq * 0.6)
+            c.drawOval(skia.Rect(-a_, -b_, a_, b_), fill(col(body, alpha)))
+            c.restore()
+        else:
+            c.drawCircle(hx, hy, R, fill(col(body, alpha)))
     a = p["H"] + rot
     ux, uy = d(a)
     ux *= J["facing"]
@@ -246,7 +257,12 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         ex, ey = hx + J["facing"] * 0 + (d(a + 90)[0] * J["facing"]) * R * 0.45 + ux * R * 0.15, \
             hy + d(a + 90)[1] * R * 0.45 + uy * R * 0.15
         c.drawCircle(ex, ey, 2.2 * S, fill(col(flat or style["eye"], alpha)))
-    if style.get("sword") == "spear":
+    if style.get("hood") and not headless:
+        draw_hood(c, hx, hy, ux, uy, rx, ry, R, S, style, J["facing"], alpha, flat)
+    if style.get("sword") == "scythe":
+        if p.get("broken", 0) < 0.5:
+            draw_scythe(c, J, style, alpha, flat)
+    elif style.get("sword") == "spear":
         draw_spear(c, J, style, alpha, flat, p.get("broken", 0))
     elif p["sheath"] < 0.5 and not style.get("unarmed"):
         draw_sword(c, J, flat or style["steel"], flat or "#222222", alpha,
@@ -479,3 +495,79 @@ def draw_cuirass(c, J, style, S, alpha=1.0):
     g = P(L, 0)
     c.drawCircle(g[0], g[1], 6.5 * S, fill(col(steel, alpha)))
     c.drawCircle(g[0], g[1], 6.5 * S, stroke(col(dark, alpha), 2.0 * S))
+
+
+# ---------------------------------------------------------------- scythe + hood (fight 07)
+def scythe_points(J, style):
+    """Adds the scythe blade to the joints: it leaves the top of the snath at
+    an angle and curves out to a point (blade_end)."""
+    p = J["p"]
+    S = J["size"]
+    fc = J["facing"]
+    a = p["sw"] + p.get("rot", 0) + style.get("blade_ang", 112)
+    bx, by = math.sin(math.radians(a)) * fc, math.cos(math.radians(a))
+    sx, sy = J["sw_dir"]
+    tip = J["tip"]
+    L = style.get("blade_len", 66) * S
+    J["blade_end"] = (tip[0] + bx * L - sx * 10 * S, tip[1] + by * L - sy * 10 * S)
+    J["blade_ctrl"] = (tip[0] + bx * L * 0.55 + sx * 15 * S, tip[1] + by * L * 0.55 + sy * 15 * S)
+
+
+def draw_scythe(c, J, style, alpha=1.0, flat=None):
+    S = J["size"]
+    butt, tip = J["hilt0"], J["tip"]
+    dark = flat or "#120c16"
+    line(c, butt, tip, stroke(col(dark, alpha), 6.6 * S))
+    line(c, butt, tip, stroke(col(flat or style.get("wood", "#3a2a40"), alpha), 3.6 * S))
+    # wrapped grips
+    for u in (0.18, 0.55):
+        q = (butt[0] + (tip[0] - butt[0]) * u, butt[1] + (tip[1] - butt[1]) * u)
+        c.drawCircle(q[0], q[1], 3.6 * S, fill(col(flat or style.get("wrap", "#8a6bb8"), alpha)))
+    be, ct = J["blade_end"], J["blade_ctrl"]
+    sx, sy = J["sw_dir"]
+    # crescent: outer curve through ctrl, inner curve pulled toward the shaft
+    inner = (ct[0] - sx * 13 * S + (tip[0] - ct[0]) * 0.18, ct[1] - sy * 13 * S + (tip[1] - ct[1]) * 0.18)
+    root2 = (tip[0] - sx * 9 * S, tip[1] - sy * 9 * S)
+    path = skia.Path()
+    path.moveTo(*tip)
+    path.quadTo(ct[0], ct[1], be[0], be[1])
+    path.quadTo(inner[0], inner[1], root2[0], root2[1])
+    path.close()
+    c.drawPath(path, fill(col(flat or style.get("steel", "#eef3f7"), alpha)))
+    c.drawPath(path, stroke(col(dark, alpha), 2.4 * S))
+    if not flat:
+        edge = skia.Path()
+        edge.moveTo(*root2)
+        edge.quadTo(inner[0], inner[1], be[0], be[1])
+        c.drawPath(edge, stroke(col(style.get("edge", "#b48cff"), alpha), 1.6 * S))
+    c.drawCircle(tip[0], tip[1], 4.2 * S, fill(col(flat or "#c9a24a", alpha)))
+
+
+def draw_hood(c, hx, hy, ux, uy, rx, ry, R, S, style, fc, alpha=1.0, flat=None):
+    """Deep hood with a dark face hole and two glowing eyes (front = +rx side)."""
+    hood = flat or style["hood"]
+    k = 1.32
+    def P(a, b):  # a along up, b toward the face
+        return (hx + ux * a * R + rx * b * R, hy + uy * a * R + ry * b * R)
+    path = skia.Path()
+    path.moveTo(*P(-1.15, 0.95))
+    path.quadTo(*P(0.4, 1.35), *P(1.2, 0.35))
+    path.quadTo(*P(1.55, -0.6), *P(1.05, -1.55))        # peak hanging back
+    path.quadTo(*P(0.2, -1.5), *P(-1.25, -1.05))
+    path.quadTo(*P(-1.6, 0.0), *P(-1.15, 0.95))
+    path.close()
+    c.drawPath(path, fill(col(hood, alpha)))
+    if flat:
+        return
+    face = skia.Path()
+    face.addOval(skia.Rect(-0.62 * R, -0.78 * R, 0.62 * R, 0.78 * R))
+    m = skia.Matrix()
+    m.setRotate(math.degrees(math.atan2(uy, ux)) - 90)
+    m.postTranslate(*P(-0.05, 0.42))
+    face.transform(m)
+    c.drawPath(face, fill(col("#08060a", alpha)))
+    glow = style.get("eyes", "#c9a6ff")
+    for b in (0.28, 0.72):
+        e = P(0.08, b)
+        c.drawCircle(e[0], e[1], 3.4 * S, fill(col(glow, alpha * 0.35)))
+        c.drawCircle(e[0], e[1], 1.7 * S, fill(col("#ffffff", alpha)))

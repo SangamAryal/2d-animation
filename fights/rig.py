@@ -18,11 +18,11 @@ FOOT_R = 4.0
 
 # Pose keys that are angles (interpolated linearly), and scalar keys.
 ANGLE_KEYS = ["T", "H", "uaf", "faf", "uab", "fab", "thf", "shf", "thb", "shb", "sw"]
-SCALAR_KEYS = ["grip", "air", "dy", "rot"]
+SCALAR_KEYS = ["grip", "air", "dy", "rot", "sq"]
 STEP_KEYS = ["sheath", "broken", "headless", "hidden", "noshield"]
 
 BASE = dict(T=0, H=0, uaf=175, faf=165, uab=185, fab=190, thf=170, shf=180,
-            thb=192, shb=182, sw=120, grip=0, air=0, dy=0, rot=0, sheath=0, broken=0, headless=0, hidden=0, noshield=0)
+            thb=192, shb=182, sw=120, grip=0, air=0, dy=0, rot=0, sq=0, sheath=0, broken=0, headless=0, hidden=0, noshield=0)
 
 
 def d(a):
@@ -220,9 +220,10 @@ def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0, grip_off=9.0, butt=8.0
     J["ftf"] = add(J["knf"], p["shf"], L_SHIN)
     J["knb"] = add(hip, p["thb"], L_THIGH)
     J["ftb"] = add(J["knb"], p["shb"], L_SHIN)
-    neck = add(hip, p["T"], L_TORSO)
+    sq = p.get("sq", 0.0)   # squash (<0) / stretch (>0) of the upper body
+    neck = add(hip, p["T"], L_TORSO * (1 + sq))
     J["neck"] = neck
-    J["head"] = add(neck, p["H"], L_NECK)
+    J["head"] = add(neck, p["H"], L_NECK * (1 + sq * 0.8))
     shoulder = add(neck, p["T"] + 180, 4)
     J["sho"] = shoulder
     J["elf"] = add(shoulder, p["uaf"], L_UARM)
@@ -256,7 +257,32 @@ def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0, grip_off=9.0, butt=8.0
     J["facing"] = facing
     J["size"] = size
     J["p"] = p
+    J["sq"] = sq
     return J
+
+
+def leg_ik(J, side, foot, bend_hint=None):
+    """Re-aim one leg (side "f" or "b") so its foot lands on `foot`, keeping
+    the knee on the same side it was posed. Returns nothing; edits J."""
+    S = J["size"]
+    hip = J["hip"]
+    kn0 = J["kn" + side]
+    l1, l2 = L_THIGH * S, L_SHIN * S
+    dx, dy = foot[0] - hip[0], foot[1] - hip[1]
+    dist = math.hypot(dx, dy)
+    reach = (l1 + l2) * 0.999
+    if dist > reach:
+        foot = (hip[0] + dx / dist * reach, hip[1] + dy / dist * reach)
+    ka = ik2(hip[0], hip[1], foot[0], foot[1], l1, l2, 1)
+    kb = ik2(hip[0], hip[1], foot[0], foot[1], l1, l2, -1)
+    if bend_hint is None:
+        da = (ka[0] - kn0[0]) ** 2 + (ka[1] - kn0[1]) ** 2
+        db = (kb[0] - kn0[0]) ** 2 + (kb[1] - kn0[1]) ** 2
+        kn = ka if da <= db else kb
+    else:
+        kn = ka if bend_hint > 0 else kb
+    J["kn" + side] = kn
+    J["ft" + side] = foot
 
 
 # ---------------------------------------------------------------- speed vs power
