@@ -25,7 +25,7 @@ SPRINGS = {
 
 
 class Smoothed:
-    def __init__(self, track, end, impulses=(), springs=None, fluid=False):
+    def __init__(self, track, end, impulses=(), springs=None, fluid=False, roots=(), drawn=False):
         sp = dict(SPRINGS)
         sp.update(springs or {})
         self.track = track
@@ -33,9 +33,21 @@ class Smoothed:
         self.t0 = -0.5
         ts = self.t0 + np.arange(n) / RATE
         tgt = np.zeros((n, len(ANGLE_KEYS)))
+        breath = np.zeros(n)
+        ph = (len(track.keys) % 7) * 0.9
         for i, t in enumerate(ts):
             p, _ = track.sample(t)
             tgt[i] = [p[k] for k in ANGLE_KEYS]
+            if drawn and p.get("headless", 0) < 0.5 and p.get("hidden", 0) < 0.5:
+                # moving hold: a drawn character never freezes dead still; it
+                # breathes and sways a little (hidden under any real action)
+                w_ = 2 * math.pi * 0.62 * t + ph
+                b_ = math.sin(w_)
+                breath[i] = b_
+                for k, amp, lag in (("T", 1.6, 0.0), ("H", 2.2, 0.7), ("uab", 2.5, 1.1),
+                                    ("uaf", 1.2, 0.9), ("fab", 3.0, 1.6), ("sw", 1.5, 1.2)):
+                    tgt[i, ANGLE_KEYS.index(k)] += amp * math.sin(w_ - lag)
+        self.breath = breath
         w = np.array([sp[k][0] for k in ANGLE_KEYS], float)
         z = np.array([sp[k][1] for k in ANGLE_KEYS], float)
         kick = np.zeros_like(tgt)
@@ -57,9 +69,23 @@ class Smoothed:
         self.out = out
         self.fluid = fluid
         if fluid:
-            self._root(track, ts, end)
+            self._root(track, ts, end, roots)
+        self.grip = None
+        if drawn:
+            # the back hand needs a few frames to let go of / take the grip,
+            # whatever the key easing says (a snap key made it teleport)
+            g_t = np.array([track.sample(t)[0]["grip"] for t in ts])
+            g, vg = g_t[0], 0.0
+            wg = 42.0
+            gs = np.zeros(n)
+            for i in range(n):
+                ag = wg * wg * (g_t[i] - g) - 2 * wg * vg
+                vg += ag * dt
+                g += vg * dt
+                gs[i] = min(1.0, max(0.0, g))
+            self.grip = gs
 
-    def _root(self, track, ts, end):
+    def _root(self, track, ts, end, roots=()):
         """Fluid mode (fight 07+): the hips travel on springs too, so moves
         flow through keys in arcs instead of stopping dead at each one, and a
         squash/stretch value rides on top of them."""
@@ -75,9 +101,18 @@ class Smoothed:
         dt = 1.0 / RATE
         # x: fast enough to keep snaps snappy, a little overshoot to settle
         ox, ol, osq = np.zeros(n), np.zeros(n), np.zeros(n)
+        kx = np.zeros(n)
+        kq = np.zeros(n)
+        for t, dvx, dq in roots:     # body knockback impulses (drawn fights)
+            j = int((t - self.t0) * RATE)
+            if 0 <= j < n:
+                kx[j] += dvx
+                kq[j] -= dq
         x, vx, l, vl, q, vq = xs[0], 0.0, lift[0], 0.0, 0.0, 0.0
         wx, zx, wl, zl, wq, zq = 44.0, 0.74, 40.0, 0.80, 34.0, 0.32
         for i in range(n):
+            vx += kx[i]
+            vq += kq[i]
             ax = wx * wx * (xs[i] - x) - 2 * zx * wx * vx
             vx += ax * dt
             x += vx * dt
@@ -105,6 +140,9 @@ class Smoothed:
         row = self.out[i] * (1 - u) + self.out[i + 1] * u
         for k, val in zip(ANGLE_KEYS, row):
             p[k] = float(val)
+        if self.grip is not None:
+            p["dy"] += 1.1 * float(self.breath[i])
+            p["grip"] = float(self.grip[i] * (1 - u) + self.grip[i + 1] * u)
         if self.fluid:
             def at(a):
                 return float(a[i] * (1 - u) + a[i + 1] * u)

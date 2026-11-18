@@ -39,6 +39,31 @@ def polyline(c, pts, paint):
     c.drawPath(path, paint)
 
 
+def limb(c, J, keys, paint):
+    """Draw a limb chain. In drawn fights the bones are Bezier curves that
+    bow with drag (J["bow"]) and the joint corners are rounded, so limbs read
+    as brush strokes with an organic bend instead of rigid sticks."""
+    bows = J.get("bow")
+    if bows is None:
+        polyline(c, [J[k] for k in keys], paint)
+        return
+    pts = [J[keys[0]]]
+    for a, b in zip(keys[:-1], keys[1:]):
+        p0, p1 = J[a], J[b]
+        o = bows.get((a, b))
+        if o is None:
+            pts.append(p1)
+            continue
+        m = ((p0[0] + p1[0]) / 2 + o[0] * 2, (p0[1] + p1[1]) / 2 + o[1] * 2)
+        for k in range(1, 7):
+            u = k / 6
+            pts.append(((1 - u) ** 2 * p0[0] + 2 * u * (1 - u) * m[0] + u * u * p1[0],
+                        (1 - u) ** 2 * p0[1] + 2 * u * (1 - u) * m[1] + u * u * p1[1]))
+    pr = skia.Paint(paint)
+    pr.setPathEffect(skia.CornerPathEffect.Make(5.5 * J["size"]))
+    polyline(c, pts, pr)
+
+
 def draw_sword(c, J, steel, dark, alpha=1.0, broken=0.0, kind="katana"):
     sx, sy = J["sw_dir"]
     hilt0 = J["hilt0"]
@@ -181,8 +206,8 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         ol = stroke(col("#1d2430", alpha), W + 4.5 * S)
         polyline(c, [J["sho"], J["elb"], J["hab"]], ol)
         polyline(c, [J["hip"], J["knb"], J["ftb"]], ol)
-    polyline(c, [J["sho"], J["elb"], J["hab"]], pb)
-    polyline(c, [J["hip"], J["knb"], J["ftb"]], pb)
+    limb(c, J, ("sho", "elb", "hab"), pb)
+    limb(c, J, ("hip", "knb", "ftb"), pb)
     if plate:
         plate_joints(c, J, ("elb", "knb", "hab"), back, S, alpha)
     if style.get("scabbard"):
@@ -194,8 +219,11 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         plate_joints(c, J, ("knf",), body, S, alpha)
         draw_cuirass(c, J, style, S, alpha)
     else:
-        line(c, J["hip"], J["neck"], stroke(col(body, alpha), W * style.get("torso", 1.0)))
-        polyline(c, [J["hip"], J["knf"], J["ftf"]], pf)
+        tw = W * style.get("torso", 1.0)
+        if J.get("drawn"):   # volume: a stretched torso gets thinner, a squashed one thicker
+            tw /= math.sqrt(max(0.6, 1 + J.get("sq", 0.0)))
+        limb(c, J, ("hip", "neck"), stroke(col(body, alpha), tw))
+        limb(c, J, ("hip", "knf", "ftf"), pf)
     hx, hy = J["head"]
     R = R_HEAD * S * style.get("head", 1.0)
     if headless:
@@ -269,7 +297,7 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
                    p.get("broken", 0), style.get("sword", "katana"))
     if plate:
         polyline(c, [J["sho"], J["elf"], J["haf"]], stroke(col("#1d2430", alpha), W + 4.5 * S))
-    polyline(c, [J["sho"], J["elf"], J["haf"]], pf)
+    limb(c, J, ("sho", "elf", "haf"), pf)
     if plate:
         plate_joints(c, J, ("elf", "haf"), body, S, alpha)
         pauldron(c, J, body, S, alpha)
@@ -503,7 +531,7 @@ def scythe_points(J, style):
     an angle and curves out to a point (blade_end)."""
     p = J["p"]
     S = J["size"]
-    fc = J["facing"]
+    fc = J.get("fx", J["facing"])
     a = p["sw"] + p.get("rot", 0) + style.get("blade_ang", 112)
     bx, by = math.sin(math.radians(a)) * fc, math.cos(math.radians(a))
     sx, sy = J["sw_dir"]

@@ -150,7 +150,8 @@ def _round3(A, B, E, stop, rots, T0):
     E(T(1.96), "step", who="B", v=0.6)
 
 
-def build():
+def build(drawn=True):
+    """drawn=False rebuilds the original v1 keys (render.py --classic)."""
     A = Track(facing=1)    # SAMURAI, starts left
     B = Track(facing=-1)   # REAPER, starts right
     ev = []
@@ -237,8 +238,16 @@ def build():
     AK(3.40, "high_cut", bx - 104)
     E(3.52, "hit", by="B", on="A", v=1.0, dmg=8, part="hilt0")
     stop(3.52, 0.09)
-    AK(3.53, "recoil", bx - 110, "snap")
-    AK(3.80, "stagger", bx - 230, "out")
+    if drawn:
+        # the butt drives him back off the snath instead of passing through him,
+        # and the reaper pulls the staff back in (follow-through, then recover)
+        AK(3.53, "recoil", bx - 150, "snap")
+        AK(3.80, "stagger", bx - 230, "out")
+        BK(3.57, "r_butt", bx - 24, "out", T=20, uaf=110, faf=104)
+        BK(3.66, "r_guard", bx - 6, "io")
+    else:
+        AK(3.53, "recoil", bx - 110, "snap")
+        AK(3.80, "stagger", bx - 230, "out")
     E(3.80, "skid", x=bx - 230, v=1.0)
     ax = bx - 230    # 100
     bx -= 40         # 290
@@ -461,4 +470,4 @@ def build():
     return dict(fighters=[("B", B, REAPER), ("A", A, SAMURAI)], events=ev, end=end,
                 title=(("SCYTHE", VIOLET), ("KATANA", RED)),
                 hp=[("B", "REAPER", VIOLET), ("A", "SAMURAI", RED)],
-                springy=True, fluid=True)
+                springy=True, fluid=True, drawn=drawn)

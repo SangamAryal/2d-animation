@@ -163,6 +163,24 @@ class Track:
                 f = kf
         return f
 
+    def facing_smooth(self, t, dur=0.1):
+        """Facing as a continuous value: each turn eases from one side to the
+        other over `dur` seconds centred on its key (x-scale passes through a
+        front-on in-between instead of mirroring in one frame)."""
+        f = float(self.facing_keys[0][1])
+        for kt, kf in self.facing_keys[1:]:
+            if kf == f:
+                continue
+            if t >= kt + dur / 2:
+                f = float(kf)
+            elif t > kt - dur / 2:
+                u = (t - (kt - dur / 2)) / dur
+                u = u * u * (3 - 2 * u)
+                return f + (kf - f) * u
+            else:
+                break
+        return f
+
     def sample(self, t):
         ks = self.keys
         if t <= ks[0][0]:
@@ -196,13 +214,16 @@ def ik2(sx, sy, tx, ty, l1, l2, bend):
     return sx + l1 * math.cos(ang), sy + l1 * math.sin(ang)
 
 
-def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0, grip_off=9.0, butt=8.0):
+def solve(p, x, facing, ground=0.0, size=1.0, blade=84.0, grip_off=9.0, butt=8.0,
+          drawn=False):
     """Joint positions in world space for pose p at hip x.
 
     size scales the whole figure; p["rot"] spins the whole body (flips,
     tumbling); the figure is snapped so its lowest point touches the ground,
     then lifted by p["air"] + p["dy"].
     """
+    if drawn:
+        return solve_drawn(p, x, facing, ground, size, blade, grip_off, butt)
     rot = p.get("rot", 0.0)
 
     def v(a, length):
@@ -352,3 +373,181 @@ pose("taunt", T=-10, H=-16, uaf=200, faf=175, sw=200, grip=0, uab=150, fab=60,
      thf=158, shf=182, thb=202, shb=186)
 pose("back_thrust", T=14, H=2, uaf=218, faf=258, sw=268, grip=0, uab=150, fab=80,
      thf=140, shf=182, thb=215, shb=200)
+
+
+# ---------------------------------------------------------------- hand-drawn mechanics (fight 07 v2+)
+def _bend(a, b, c, sgn):
+    """Signed bend at b. For legs, > 0 means the knee points backwards; for
+    arms, < 0 means the elbow is hyperextended. Rotation invariant."""
+    ux, uy = b[0] - a[0], b[1] - a[1]
+    wx, wy = c[0] - b[0], c[1] - b[1]
+    return (ux * wy - uy * wx) * sgn
+
+
+def _mirror(a, c, b):
+    """Reflect joint b across the line a-c (keeps both bone lengths)."""
+    dx, dy = c[0] - a[0], c[1] - a[1]
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-9:
+        return b
+    u = ((b[0] - a[0]) * dx + (b[1] - a[1]) * dy) / L2
+    px, py = a[0] + dx * u, a[1] + dy * u
+    return (2 * px - b[0], 2 * py - b[1])
+
+
+def _ik_natural(s, t, l1, l2, sgn, want_pos):
+    """Two-bone IK picking the solution whose bend sign matches want_pos."""
+    e1 = ik2(s[0], s[1], t[0], t[1], l1, l2, 1)
+    e2 = ik2(s[0], s[1], t[0], t[1], l1, l2, -1)
+    b1 = _bend(s, e1, t, sgn)
+    return e1 if (b1 > 0) == want_pos else e2
+
+
+def _smoothmax(a, b, k=6.0):
+    if abs(a - b) > 6 * k:
+        return max(a, b)
+    return k * math.log(math.exp(a / k) + math.exp(b / k))
+
+
+def solve_drawn(p, x, fx, ground, size, blade, grip_off, butt):
+    """Like solve(), with the mechanics a hand animator keeps for free:
+
+    * fx may be fractional while a fighter turns round, so a turn is drawn
+      as a few in-betweens through a front-on pose instead of a mirror pop;
+    * knees always bend forward and elbows never hyperextend (the bad side
+      is reflected across the limb's own line, so bone lengths and the
+      hand/foot positions stay exactly where they were posed);
+    * the back hand slides onto the weapon with real two-bone IK, so the
+      arm never shrinks or stretches while it takes the grip;
+    * spins and flips turn about the body's centre, not the hips, and in
+      the air the height follows one arc instead of re-snapping to the
+      lowest limb every frame (that made jumps bounce);
+    * hands and elbows count for the ground, so nothing sinks through it;
+    * squash/stretch is limited so proportions stay consistent.
+    """
+    sgn = 1 if fx >= 0 else -1
+    rot = p.get("rot", 0.0)
+    rw = ((rot + 180) % 360) - 180
+    sq = max(-0.16, min(0.13, p.get("sq", 0.0)))
+
+    def build(rr):
+        def v(a, length):
+            s_, c_ = d(a + rr)
+            return s_ * length * size * fx, c_ * length * size
+
+        def add(pt, a, length):
+            dx, dy = v(a, length)
+            return (pt[0] + dx, pt[1] + dy)
+
+        J = {}
+        hip = (0.0, 0.0)
+        J["hip"] = hip
+        for s in "fb":
+            J["kn" + s] = add(hip, p["th" + s], L_THIGH)
+            J["ft" + s] = add(J["kn" + s], p["sh" + s], L_SHIN)
+            if _bend(hip, J["kn" + s], J["ft" + s], sgn) > 0:
+                J["kn" + s] = _mirror(hip, J["ft" + s], J["kn" + s])
+        neck = add(hip, p["T"], L_TORSO * (1 + sq))
+        J["neck"] = neck
+        J["head"] = add(neck, p["H"], L_NECK * (1 + sq * 0.8))
+        sho = add(neck, p["T"] + 180, 4)
+        J["sho"] = sho
+        J["elf"] = add(sho, p["uaf"], L_UARM)
+        J["haf"] = add(J["elf"], p["faf"], L_FARM)
+        if _bend(sho, J["elf"], J["haf"], sgn) < 0:
+            J["elf"] = _mirror(sho, J["haf"], J["elf"])
+        elb = add(sho, p["uab"], L_UARM)
+        hab = add(elb, p["fab"], L_FARM)
+        g = p["grip"]
+        l1, l2 = L_UARM * size, L_FARM * size
+        if g > 0.01:
+            tgt = add(J["haf"], p["sw"], grip_off)
+            reach = (l1 + l2) * 0.985
+            if math.dist(sho, tgt) > reach:
+                # slide the grip along the shaft toward the shoulder
+                a0 = add(J["haf"], p["sw"], -butt)
+                b0 = add(J["haf"], p["sw"], 12 + blade)
+                best = None
+                for k in range(41):
+                    u = k / 40
+                    q = (a0[0] + (b0[0] - a0[0]) * u, a0[1] + (b0[1] - a0[1]) * u)
+                    dd = math.dist(sho, q)
+                    if dd <= reach:
+                        cost = math.dist(q, tgt)
+                        if best is None or cost < best[0]:
+                            best = (cost, q)
+                if best:
+                    tgt = best[1]
+            gg = g * g * (3 - 2 * g)
+            hab = (lerp(hab[0], tgt[0], gg), lerp(hab[1], tgt[1], gg))
+            elb = _ik_natural(sho, hab, l1, l2, sgn, True)
+            if math.dist(sho, hab) > l1 + l2:
+                ux_, uy_ = hab[0] - sho[0], hab[1] - sho[1]
+                L = math.hypot(ux_, uy_)
+                hab = (sho[0] + ux_ / L * (l1 + l2), sho[1] + uy_ / L * (l1 + l2))
+        elif _bend(sho, elb, hab, sgn) < 0:
+            elb = _mirror(sho, hab, elb)
+        J["elb"], J["hab"] = elb, hab
+        J["hilt0"] = add(J["haf"], p["sw"], -butt)
+        J["guard"] = add(J["haf"], p["sw"], 12)
+        J["tip"] = add(J["haf"], p["sw"], 12 + blade)
+        J["w0"] = J["hilt0"] if butt > 20 else J["guard"]
+        sc_a = -115 + p["T"] * 0.6
+        J["sc0"] = add(add(hip, p["T"], 8), 90, 10)
+        J["sc1"] = add(J["sc0"], sc_a, 72)
+        J["_sc_a"] = sc_a
+        J["_v"] = v
+        return J
+
+    def low(J):
+        return min(J["ftf"][1], J["ftb"][1], J["knf"][1] - 2, J["knb"][1] - 2,
+                   J["head"][1] - (R_HEAD - FOOT_R) * size, J["neck"][1] - 2,
+                   J["haf"][1] - 1, J["hab"][1] - 1, J["elf"][1] - 3, J["elb"][1] - 3)
+
+    J = build(rot)
+    if abs(rw) > 0.5:
+        # pivot the spin about the centre of the body (mid torso)
+        J0 = build(rot - rw)
+        c0 = ((J0["hip"][0] + J0["neck"][0]) / 2, (J0["hip"][1] + J0["neck"][1]) / 2)
+        c1 = ((J["hip"][0] + J["neck"][0]) / 2, (J["hip"][1] + J["neck"][1]) / 2)
+        ox, oy = c0[0] - c1[0], c0[1] - c1[1]
+        for k in list(J):
+            if not k.startswith("_"):
+                J[k] = (J[k][0] + ox, J[k][1] + oy)
+        h_rot = ground - low(J) + FOOT_R
+        h_up = ground - low(J0) + FOOT_R
+        air = p["air"]
+        w = min(1.0, max(0.0, air / 40.0))
+        # reference height halfway between "standing" and "lowest limb": keeps
+        # one smooth arc without throwing inverted poses far higher than keyed
+        h_air = _smoothmax(0.5 * (h_up + h_rot) + air, h_rot)
+        hy = lerp(h_rot + air, h_air, w) + p["dy"]
+    else:
+        hy = ground - low(J) + FOOT_R + p["air"] + p["dy"]
+    v = J.pop("_v")
+    sc_a = J.pop("_sc_a")
+    for k in list(J):
+        J[k] = (J[k][0] + x, J[k][1] + hy)
+    J["sw_dir"] = v(p["sw"], 1.0 / size)
+    J["sc_a"] = sc_a + rot
+    J["facing"] = sgn
+    J["fx"] = fx
+    J["size"] = size
+    J["p"] = p
+    J["sq"] = sq
+    J["drawn"] = True
+    return J
+
+
+def leg_ik_drawn(J, side, foot):
+    """leg_ik that always keeps the knee pointing forward."""
+    S = J["size"]
+    hip = J["hip"]
+    l1, l2 = L_THIGH * S, L_SHIN * S
+    dx, dy = foot[0] - hip[0], foot[1] - hip[1]
+    dist = math.hypot(dx, dy)
+    reach = (l1 + l2) * 0.999
+    if dist > reach:
+        foot = (hip[0] + dx / dist * reach, hip[1] + dy / dist * reach)
+    J["kn" + side] = _ik_natural(hip, foot, l1, l2, J["facing"], False)
+    J["ft" + side] = foot

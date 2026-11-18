@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from rig import FOOT_R, leg_ik
+from rig import FOOT_R, leg_ik, leg_ik_drawn
 
 RATE = 240
 
@@ -22,7 +22,8 @@ def _smooth(u):
 
 
 class Planter:
-    def __init__(self, raw, end, size=1.0):
+    def __init__(self, raw, end, size=1.0, drawn=False):
+        self.ik = leg_ik_drawn if drawn else leg_ik
         """raw(t) -> joints dict without foot fixes."""
         self.raw = raw
         self.t0 = -0.5
@@ -91,5 +92,5 @@ class Planter:
             if not (self.use[s][i] or self.use[s][i + 1]):
                 continue
             a, b = self.out[s][i], self.out[s][i + 1]
-            leg_ik(J, s, (a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u))
+            self.ik(J, s, (a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u))
         return J

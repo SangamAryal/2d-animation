@@ -95,10 +95,51 @@ def seg_closest(p1, q1, p2, q2):
     return tuple((c1 + c2) / 2)
 
 
+DRAG_DT = 1 / 120
+# bones that bend with drag: (root, end, strength)
+DRAG_BONES = (("sho", "elf", 1.0), ("elf", "haf", 1.0), ("sho", "elb", 1.1), ("elb", "hab", 1.2),
+              ("hip", "knf", 0.55), ("knf", "ftf", 0.6), ("hip", "knb", 0.55), ("knb", "ftb", 0.6),
+              ("hip", "neck", 0.45))
+
+
+def drag_bows(J, Jp):
+    """Hand-drawn drag: a bone sweeping fast bows backward against its motion
+    (the middle of a limb trails its end, like a whip or a brush stroke), so
+    fast limbs read as curves instead of rigid sticks. Returns the offset of
+    each bone's Bezier control point from the bone's midpoint."""
+    out = {}
+    S = J["size"]
+    if J["p"].get("hidden"):
+        return out
+    for a, b, k in DRAG_BONES:
+        ax, ay = J[a]
+        bx, by = J[b]
+        L = math.hypot(bx - ax, by - ay)
+        if L < 1e-3:
+            continue
+        # velocity of the bone end relative to its root (units / s)
+        vx = ((bx - ax) - (Jp[b][0] - Jp[a][0])) / DRAG_DT
+        vy = ((by - ay) - (Jp[b][1] - Jp[a][1])) / DRAG_DT
+        nx, ny = -(by - ay) / L, (bx - ax) / L
+        vp = vx * nx + vy * ny
+        off = -vp * 0.0042 * k
+        cap = 0.17 * L
+        off = cap * math.tanh(off / cap)
+        if abs(off) > 0.3 * S:
+            out[(a, b)] = (nx * off, ny * off)
+    return out
+
+
 class Fight:
-    def __init__(self, name):
+    def __init__(self, name, classic=False):
         mod = importlib.import_module(FIGHTS[name])
-        d = mod.build()
+        import inspect
+        d = mod.build(drawn=not classic) if "drawn" in inspect.signature(mod.build).parameters \
+            else mod.build()
+        # drawn=True: hand-drawn mechanics + line layer (rig.solve_drawn,
+        # turns, body knockback, curved/dragging limbs, ribbon smears).
+        # classic=True renders the same fight without it (A/B comparisons).
+        self.drawn = d.get("drawn", False) and not classic
         self.fighters = d["fighters"]       # [(id, track, style)], draw order
         self.ev = d["events"]
         self.end = d["end"]
@@ -131,21 +172,38 @@ class Fight:
                 elif k == "flinch":
                     imp[kw["who"]].append((t, dict(T=-500 * v, H=-1200 * v)))
             import motion
+            roots = {i: [] for i in self.ids}
+            if self.drawn:
+                # hits shove the whole body back (not only the limbs), with a squash
+                for t, k, kw in self.ev:
+                    if k not in ("hit", "dmg", "clash"):
+                        continue
+                    v = kw.get("v", 1.0) * (1.5 if kw.get("big") else 1.0)
+                    if k == "clash":
+                        for i in self.ids:
+                            roots[i].append((t, -self.tracks[i][0].facing(t) * 380 * v, 0.6 * v))
+                        continue
+                    on = kw.get("on") or kw.get("who") or self.other(kw["by"])
+                    if k == "dmg" and kw.get("amt", 0) >= 100:
+                        continue
+                    roots[on].append((t, -self.tracks[on][0].facing(t) * 900 * v, 1.6 * v))
             for i, tr, st in self.fighters:
                 self.smooth[i] = motion.Smoothed(tr, self.end, imp[i], st.get("springs"),
-                                                 fluid=self.fluid)
+                                                 fluid=self.fluid, roots=roots[i],
+                                                 drawn=self.drawn)
         if self.fluid:
             import feet
             for i, tr, st in self.fighters:
                 self.feet[i] = feet.Planter(lambda t, i=i: self.joints_raw(i, t), self.end,
-                                            st.get("size", 1.0))
+                                            st.get("size", 1.0), drawn=self.drawn)
 
     def joints_raw(self, who, t):
         tr, st = self.tracks[who]
         p, x = (self.smooth[who] if who in self.smooth else tr).sample(t)
-        J = solve(p, x, tr.facing(t), size=st.get("size", 1.0),
+        J = solve(p, x, tr.facing_smooth(t) if self.drawn else tr.facing(t),
+                  size=st.get("size", 1.0),
                   blade=st.get("blade", 72), grip_off=st.get("grip_off", 9.0),
-                  butt=st.get("butt", 8.0))
+                  butt=st.get("butt", 8.0), drawn=self.drawn)
         if st.get("sword") == "scythe":
             scythe_points(J, st)
         return J
@@ -154,6 +212,11 @@ class Fight:
         J = self.joints_raw(who, t)
         if who in self.feet:
             self.feet[who].apply(J, t)
+        if self.drawn:
+            Jp = self.joints_raw(who, t - DRAG_DT)
+            if who in self.feet:
+                self.feet[who].apply(Jp, t - DRAG_DT)
+            J["bow"] = drag_bows(J, Jp)
         return J
 
     def other(self, who):
@@ -162,13 +225,13 @@ class Fight:
 
 # ------------------------------------------------------------ renderer
 class Renderer:
-    def __init__(self, fight="power", wide=False, scale=1.0):
+    def __init__(self, fight="power", wide=False, scale=1.0, classic=False):
         self.wide = wide
         self.W, self.H = (1920, 1080) if wide else (1080, 1920)
         self.W, self.H = int(self.W * scale), int(self.H * scale)
         self.s = scale
         self.gy = self.H * (0.80 if wide else 0.62)
-        self.f = Fight(fight)
+        self.f = Fight(fight, classic=classic)
         self.frames = build_timemap(self.f.ev, self.f.end)
         self.n = len(self.frames)
         self.font_big = skia.Font(typeface("ExtraBold"), 96 * scale)
@@ -630,12 +693,15 @@ class Renderer:
         f = self.f
         a, b = f.joints(who, t), f.joints(who, t - 1 / 60)
         sp = math.hypot(a["hip"][0] - b["hip"][0], a["hip"][1] - b["hip"][1]) * 60
-        if sp < 600:
+        if sp < (1600 if f.drawn else 600):
             return
         n = 7 if style.get("fast") else 4
+        a0 = 0.38
+        if f.drawn:   # afterimages only on the very fastest moves, and faint
+            n, a0 = (3 if style.get("fast") else 2), 0.2
         for k in range(1, n + 1):
-            J = f.joints(who, t - k * 0.011)
-            draw_fighter(c, J, style, alpha=0.38 * (1 - k / (n + 1)), flat=flat)
+            J = f.joints(who, t - k * (0.016 if f.drawn else 0.011))
+            draw_fighter(c, J, style, alpha=a0 * (1 - k / (n + 1)), flat=flat)
 
     SMEAR_SEGS = (("sho", "elf", "haf"), ("sho", "elb", "hab"), ("hip", "knf", "ftf"),
                   ("hip", "knb", "ftb"))
@@ -689,6 +755,26 @@ class Renderer:
                     path.lineTo(*P(b, k0))
                     path.close()
                     c.drawPath(path, fill(col(wc, 0.8)))
+        if f.drawn:
+            # one solid swept shape per limb (a drawn smear), not repeated limbs
+            c.restore()
+            c.saveLayer(None, fill(col("#ffffff", 0.5)))
+            for seg in segs:
+                pc = flat or (style["back"] if seg[1] in ("elb", "knb") else body)
+                pf = fill(col(pc))
+                pe = stroke(col(pc), W * 0.7)
+                for a, b in zip(Js[:-1], Js[1:]):
+                    for k0, k1 in zip(seg[:-1], seg[1:]):
+                        path = skia.Path()
+                        path.moveTo(*P(a, k0))
+                        path.lineTo(*P(a, k1))
+                        path.lineTo(*P(b, k1))
+                        path.lineTo(*P(b, k0))
+                        path.close()
+                        c.drawPath(path, pf)
+                        c.drawPath(path, pe)
+            c.restore()
+            return
         for seg in segs:
             pc = flat or (style["back"] if seg[1] in ("elb", "knb") else body)
             pnt = stroke(col(pc), W * 0.9)
@@ -1424,8 +1510,10 @@ def main():
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--stills")
     ap.add_argument("--still-times", default="")
+    ap.add_argument("--classic", action="store_true",
+                    help="render without the hand-drawn layer (drawn=False)")
     a = ap.parse_args()
-    r = Renderer(fight=a.fight, wide=a.wide, scale=a.scale)
+    r = Renderer(fight=a.fight, wide=a.wide, scale=a.scale, classic=a.classic)
     times = [float(x) for x in a.still_times.split(",") if x]
     if a.stills:
         os.makedirs(a.stills, exist_ok=True)
