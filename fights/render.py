@@ -844,6 +844,36 @@ class Renderer:
                 pts.append((x, 1 - rng.uniform(1, 9) * (j + 1) * 0.6))
             polyline(c, pts, stroke(col("#3a3128", a), 2.6))
 
+    def weapon_contact(self, t):
+        f = self.f
+        if f.drawn:
+            import contact
+            return contact.contact_point(f, t)[1]
+        a, b = f.joints(f.ids[0], t), f.joints(f.ids[1], t)
+        return seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
+
+    def weapons_over_sparks(self, c, t, vt, flat):
+        """Right after a clash, draw both weapons again on top of the spark
+        burst, so the X of the crossing blades stays readable through it."""
+        if not any(k == "clash" and 0 <= vt - et < 0.3 for et, k, d in self.fx):
+            return
+        from draw import draw_scythe, draw_sword
+        for who in self.f.ids:
+            tr, style = self.f.tracks[who]
+            J = self.f.joints(who, t)
+            p = J["p"]
+            if p.get("hidden") or p.get("broken", 0) >= 0.5 or style.get("unarmed"):
+                continue
+            jx, jy = self.jitter(who, int(round(vt * FPS)))
+            c.save()
+            c.translate(jx, jy)
+            if style.get("sword") == "scythe":
+                draw_scythe(c, J, style, 1.0, flat)
+            elif style.get("sword") != "spear" and p["sheath"] < 0.5:
+                draw_sword(c, J, flat or style["steel"], flat or "#222222", 1.0,
+                           0, style.get("sword", "katana"))
+            c.restore()
+
     def draw_fx(self, c, vt):
         t_now = self.frames[min(self.n - 1, int(round(vt * FPS)))]
         for et, k, d in self.fx:
@@ -852,8 +882,7 @@ class Renderer:
                 rng = np.random.default_rng(d["seed"])
                 tt = d["t0"]
                 while tt < min(t_now, d["t0"] + d["dur"]):
-                    a, b = f.joints(f.ids[0], tt), f.joints(f.ids[1], tt)
-                    px, py = seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
+                    px, py = self.weapon_contact(tt)
                     for j in range(3):
                         age = t_now - tt
                         life = rng.uniform(0.15, 0.4)
@@ -868,8 +897,7 @@ class Renderer:
                                    stroke(col("#ffd36b", 1 - age / life), 2.4))
                     tt += 1 / 120
                 if t_now <= d["t0"] + d["dur"]:
-                    a, b = f.joints(f.ids[0], t_now), f.joints(f.ids[1], t_now)
-                    px, py = seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
+                    px, py = self.weapon_contact(t_now)
                     fl = 0.7 + 0.3 * math.sin(t_now * 90)
                     c.drawCircle(px, py, 22 * fl, fill(col("#ffd36b", 0.35)))
                     c.drawCircle(px, py, 9 * fl, fill(col("#ffffff", 0.9)))
@@ -1411,6 +1439,8 @@ class Renderer:
         self.neck_fountain(c, t, "#f4f1ea" if flat else None)
         self.draw_blood(c, vt, "#f4f1ea" if flat else None)
         self.draw_fx(c, vt)
+        if f.drawn:
+            self.weapons_over_sparks(c, t, vt, flat)
         elements.draw_front(self, c, t, flat)
         if sg <= 0:
             powers.draw_front(self, c, t, vt, flat)
@@ -1465,9 +1495,10 @@ class Renderer:
         self.draw_hp(c, vt)
         for bt, text in self.banners:
             u = vt - bt
-            if 0 <= u < 1.0:
+            life = 0.62 if self.f.drawn else 1.0   # gone before the first clash
+            if 0 <= u < life:
                 sc = 1 + 1.2 * max(0, 1 - u / 0.12)
-                a = min(1, u / 0.06) * min(1, (1.0 - u) / 0.25)
+                a = min(1, u / 0.06) * min(1, (life - u) / 0.2)
                 font = skia.Font(typeface("ExtraBold"), 150 * s * sc)
                 y = self.gy - 0.30 * H
                 self.text_center(c, text, y + 6 * s, font, "#1b1714", a * 0.6)

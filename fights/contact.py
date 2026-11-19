@@ -57,6 +57,26 @@ def weapon_segs(J, st):
     return [(J["guard"], J["tip"], True)]
 
 
+def _sub(a, b, u0, u1):
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    return tuple(a + (b - a) * u0), tuple(a + (b - a) * u1)
+
+
+def clash_segs(J, st):
+    """Parts of a weapon that may meet another weapon in a clash: the blade
+    from a quarter of its length out (never the guard, hilt or hands), the
+    scythe's crescent, and the upper 55% of its shaft (well away from the
+    hands)."""
+    if J["p"].get("sheath", 0) > 0.5 and st.get("sword") not in ("scythe", "spear"):
+        return []
+    if st.get("sword") == "scythe":
+        return [_sub(J["hilt0"], J["tip"], 0.45, 1.0), (J["tip"], J["blade_end"])]
+    return [_sub(J["guard"], J["tip"], 0.25, 0.97)]
+
+
+MIN_CROSS = 38.0     # degrees: a block reads as an X, not two parallel sticks
+
+
 def body_segs(J):
     return [(J["hip"], J["neck"]), (J["neck"], J["head"])]
 
@@ -64,8 +84,8 @@ def body_segs(J):
 def shapes(f, kind, kw, JA, JB, a_id, b_id):
     """Two lists of segments that must touch for this event."""
     sa, sb = f.tracks[a_id][1], f.tracks[b_id][1]
-    if kind == "clash":
-        return [(s[0], s[1]) for s in weapon_segs(JA, sa)], [(s[0], s[1]) for s in weapon_segs(JB, sb)]
+    if kind in ("clash", "lock"):
+        return clash_segs(JA, sa), clash_segs(JB, sb)
     by = kw.get("by")
     att, vic = (JA, JB) if by == a_id else (JB, JA)
     st = sa if by == a_id else sb
@@ -89,14 +109,29 @@ def shapes(f, kind, kw, JA, JB, a_id, b_id):
     return src, body_segs(vic)
 
 
-def gap(sa, sb):
+def gap(sa, sb, cross=False):
+    """Distance between two shape lists and the contact point. With cross=True
+    a shallow crossing angle (< MIN_CROSS) counts as extra distance."""
     best = (1e9, None)
     for a in sa:
         for b in sb:
             d, c1, c2, _ = _seg_seg(a[0], a[1], b[0], b[1])
+            if cross:
+                ua = np.subtract(a[1], a[0])
+                ub = np.subtract(b[1], b[0])
+                cosv = abs(ua @ ub) / max(1e-9, np.linalg.norm(ua) * np.linalg.norm(ub))
+                ang = math.degrees(math.acos(min(1.0, cosv)))
+                d += max(0.0, MIN_CROSS - ang) * 0.6
             if d < best[0]:
                 best = (d, tuple((c1 + c2) / 2))
     return best
+
+
+def contact_point(f, t):
+    """Where the two weapons actually touch (or are closest) at story time t."""
+    a_id, b_id = f.ids
+    JA, JB = f.joints_raw(a_id, t), f.joints_raw(b_id, t)
+    return gap(*shapes(f, "clash", {}, JA, JB, a_id, b_id))
 
 
 # ---------------------------------------------------------------- corrections
@@ -133,7 +168,7 @@ class Corrections:
         return 0.0, 0.0
 
 
-TOL = {"clash": 1.5, "hit": 3.0, "decap": 2.0}
+TOL = {"clash": 1.5, "lock": 2.0, "hit": 3.0, "decap": 2.0}
 LINKED = ("hitstop", "kill", "decap", "dmg", "scrape", "slowmo")
 
 
@@ -144,6 +179,11 @@ def solve_contacts(f, verbose=False):
     f._anch = {i: [] for i in ids}
     a_id, b_id = ids
     report = []
+    for t, k, kw in list(f.ev):
+        if k == "scrape":
+            n = max(2, int(kw["dur"] / 0.08))
+            for i in range(1, n + 1):
+                f.ev.append((t + kw["dur"] * i / n, "lock", dict(lock=True)))
     order = sorted(range(len(f.ev)), key=lambda j: f.ev[j][0])
     for j in order:
         t, k, kw = f.ev[j]
@@ -153,11 +193,12 @@ def solve_contacts(f, verbose=False):
             continue
 
         def g_at(tt):
-            return gap(*shapes(f, k, kw, f.joints_raw(a_id, tt), f.joints_raw(b_id, tt), a_id, b_id))
+            return gap(*shapes(f, k, kw, f.joints_raw(a_id, tt), f.joints_raw(b_id, tt), a_id, b_id),
+                       cross=k in ("clash", "lock"))
         g0 = g_at(t)[0]
         # 1. re-time to the closest moment (never later than 2 frames)
         best_t, best_g = t, g0
-        for dt in np.arange(-0.07, (0.05 if k != "clash" else 0.035), 1 / 240):
+        for dt in ([] if k == "lock" else np.arange(-0.07, (0.05 if k != "clash" else 0.035), 1 / 240)):
             gg = g_at(t + dt)[0]
             if gg < best_g - 0.5:
                 best_t, best_g = t + dt, gg
@@ -177,6 +218,7 @@ def solve_contacts(f, verbose=False):
         report.append((round(t, 3), k, round(g0, 1), round(g1, 1), round(g2, 1)))
         if verbose:
             print(f"{k:6s} t={t:6.3f} gap {g0:6.1f} -> retimed {g1:6.1f} -> solved {g2:5.1f}")
+    f.ev[:] = [e for e in f.ev if e[1] != "lock"]
     return report
 
 
@@ -206,7 +248,7 @@ def _search_r(f, k, kw, t, a_id, b_id, swr, dxr):
         whos = [att, vic]
     for who in whos:
         armed = True
-        if k != "clash":
+        if k not in ("clash", "lock"):
             armed = who == kw["by"] and kw.get("part") not in ("ftf", "ftb", "haf", "hab")
         sw_range = np.arange(-swr, swr + 1, 5) if armed else [0.0]
         dx_range = np.arange(-dxr, dxr + 1, 6)
@@ -242,4 +284,4 @@ def _try(f, k, kw, t, a_id, b_id, who, old, dsw, dx):
     f.corr[who].set(t, dsw, dx)
     f._anch[who] = f.corr[who].anchors()
     JA, JB = f.joints_raw(a_id, t), f.joints_raw(b_id, t)
-    return gap(*shapes(f, k, kw, JA, JB, a_id, b_id))[0]
+    return gap(*shapes(f, k, kw, JA, JB, a_id, b_id), cross=k in ("clash", "lock"))[0]

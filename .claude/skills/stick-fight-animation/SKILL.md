@@ -58,6 +58,11 @@ BK(t + 0.45, "r_guard", x - 50, "out")       # recovery
   by eye: check `Fight(...).contact_report` and `f.corr[...]`; a correction
   above ~40 deg or ~50 units means the keys are wrong (e.g. a swing that
   passes behind the attacker) and must be rekeyed.
+- A clash is the BLADE (past the guard, never hilt/hands) crossing the other
+  weapon's shaft or blade in a visible X (>= 38 deg), sparks on the crossing,
+  weapons drawn over the spark burst. Before delivering, check every contact
+  in the encoded video: `python3 fights/review_contacts.py --fight NAME
+  --video OUT.mp4 --out DIR --zoom 560` and send contact stills as proof.
 - Decapitations: the neck must sit inside the cutting part of the blade.
 - Kicks: `part="ftf"`; key the kick so the foot reaches the torso (step in),
   chamber with `kick_wind` first. Blunt hits (feet, hands, butt) don't bleed.
