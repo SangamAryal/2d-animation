@@ -33,6 +33,7 @@ class Smoothed:
         self.t0 = -0.5
         ts = self.t0 + np.arange(n) / RATE
         tgt = np.zeros((n, len(ANGLE_KEYS)))
+        antic = _anticipation(track, ts) if drawn else None
         breath = np.zeros(n)
         ph = (len(track.keys) % 7) * 0.9
         for i, t in enumerate(ts):
@@ -48,6 +49,11 @@ class Smoothed:
                                     ("uaf", 1.2, 0.9), ("fab", 3.0, 1.6), ("sw", 1.5, 1.2)):
                     tgt[i, ANGLE_KEYS.index(k)] += amp * math.sin(w_ - lag)
         self.breath = breath
+        if antic is not None:
+            tgt += antic[0]
+            self._antic_x = antic[1]
+        else:
+            self._antic_x = None
         w = np.array([sp[k][0] for k in ANGLE_KEYS], float)
         z = np.array([sp[k][1] for k in ANGLE_KEYS], float)
         kick = np.zeros_like(tgt)
@@ -93,9 +99,10 @@ class Smoothed:
         xs = np.zeros(n)
         lift = np.zeros(n)
         sqk = np.zeros(n)
+        ax_ = getattr(self, "_antic_x", None)
         for i, t in enumerate(ts):
             p, x = track.sample(t)
-            xs[i] = x
+            xs[i] = x + (ax_[i] if ax_ is not None else 0.0)
             lift[i] = p["air"] + p["dy"]
             sqk[i] = p.get("sq", 0.0)
         dt = 1.0 / RATE
@@ -151,3 +158,37 @@ class Smoothed:
             p["dy"] += at(self.rl) - at(self.rlift)
             p["sq"] = at(self.rsq)
         return p, x
+
+
+def _anticipation(track, ts, k=0.14, cap=20.0, lead=0.09):
+    """Automatic anticipation for drawn fights: just before every fast
+    ("snap") move, each joint eases a little the *opposite* way of where it
+    is about to go, and the hips draw back before a lunge, then the snap
+    whips through. Contact timing is untouched (the offset is gone before
+    the move starts arriving)."""
+    n = len(ts)
+    out = np.zeros((n, len(ANGLE_KEYS)))
+    ox = np.zeros(n)
+    ks = track.keys
+    for j in range(1, len(ks)):
+        t0, p0, x0, _ = ks[j - 1]
+        t1, p1, x1, e = ks[j]
+        if e != "snap" or t1 - t0 > 0.3 or t1 - t0 < 0.03:
+            continue
+        dang = np.array([p1[q] - p0[q] for q in ANGLE_KEYS])
+        off = np.clip(-k * dang, -cap, cap)
+        offx = max(-16.0, min(16.0, -0.16 * (x1 - x0)))
+        a, b, c = t0 - lead, t0 - 0.012, t0 + 0.035
+        i0 = max(0, int(np.searchsorted(ts, a)))
+        i1 = min(n, int(np.searchsorted(ts, c)))
+        for i in range(i0, i1):
+            t = ts[i]
+            if t < b:
+                u = (t - a) / (b - a)
+            else:
+                u = 1 - (t - b) / (c - b)
+            u = max(0.0, min(1.0, u))
+            w = u * u * (3 - 2 * u)
+            out[i] += off * w
+            ox[i] += offx * w
+    return out, ox

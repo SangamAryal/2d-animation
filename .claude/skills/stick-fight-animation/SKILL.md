@@ -50,6 +50,18 @@ BK(t + 0.45, "r_guard", x - 50, "out")       # recovery
 
 ## Contacts and weapons
 
+- **Sangam's #1 complaint: sparks with blades not touching.** In drawn fights
+  `fights/contact.py` runs on every `clash`, `hit` and `decap`: it re-times
+  the event (and its hit-stop/kill cues) to the closest moment and adds a
+  small eased correction (weapon angle / hip x) so the shapes truly touch,
+  and puts sparks/blood at the real contact point. Still key contacts close
+  by eye: check `Fight(...).contact_report` and `f.corr[...]`; a correction
+  above ~40 deg or ~50 units means the keys are wrong (e.g. a swing that
+  passes behind the attacker) and must be rekeyed.
+- Decapitations: the neck must sit inside the cutting part of the blade.
+- Kicks: `part="ftf"`; key the kick so the foot reaches the torso (step in),
+  chamber with `kick_wind` first. Blunt hits (feet, hands, butt) don't bleed.
+
 - Weapons attach to the front hand by construction; the back hand takes the
   grip with IK (`grip=1`), smoothed over ~5 frames. Don't key grip on/off on
   the contact frame.

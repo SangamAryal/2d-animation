@@ -122,8 +122,8 @@ def drag_bows(J, Jp):
         vy = ((by - ay) - (Jp[b][1] - Jp[a][1])) / DRAG_DT
         nx, ny = -(by - ay) / L, (bx - ax) / L
         vp = vx * nx + vy * ny
-        off = -vp * 0.0042 * k
-        cap = 0.17 * L
+        off = -vp * 0.006 * k
+        cap = 0.22 * L
         off = cap * math.tanh(off / cap)
         if abs(off) > 0.3 * S:
             out[(a, b)] = (nx * off, ny * off)
@@ -191,6 +191,10 @@ class Fight:
                 self.smooth[i] = motion.Smoothed(tr, self.end, imp[i], st.get("springs"),
                                                  fluid=self.fluid, roots=roots[i],
                                                  drawn=self.drawn)
+        self.corr, self._anch = {}, {}
+        if self.drawn:
+            import contact
+            self.contact_report = contact.solve_contacts(self)
         if self.fluid:
             import feet
             for i, tr, st in self.fighters:
@@ -200,6 +204,11 @@ class Fight:
     def joints_raw(self, who, t):
         tr, st = self.tracks[who]
         p, x = (self.smooth[who] if who in self.smooth else tr).sample(t)
+        an = self._anch.get(who)
+        if an:
+            dsw, dx = self.corr[who].at(t, an)
+            p["sw"] += dsw
+            x += dx
         J = solve(p, x, tr.facing_smooth(t) if self.drawn else tr.facing(t),
                   size=st.get("size", 1.0),
                   blade=st.get("blade", 72), grip_off=st.get("grip_off", 9.0),
@@ -268,11 +277,13 @@ class Renderer:
                 continue
             if k == "clash":
                 a, b = f.joints(f.ids[0], t), f.joints(f.ids[1], t)
-                pt = seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
+                pt = kw.get("contact") or seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
                 self.fx.append((vt, k, dict(kw, pt=pt, seed=seed)))
             elif k == "hit":
                 A = f.joints(kw["by"], t)
-                if kw.get("part"):
+                if kw.get("contact"):
+                    pt = kw["contact"]
+                elif kw.get("part"):
                     pt = A[kw["part"]]
                 else:
                     B = f.joints(kw["on"], t)
@@ -281,8 +292,10 @@ class Renderer:
                 on = kw.get("on") or f.other(kw["by"])
                 B = f.joints(on, t)
                 dirx = 1.0 if B["hip"][0] > A["hip"][0] else -1.0
-                self.add_wound(vt, on, B, pt, seed)
-                self.blood.append((vt, pt, dirx, 16 if kw.get("big") else 11, seed))
+                blunt = f.drawn and kw.get("part") in ("ftf", "ftb", "haf", "hab", "hilt0")
+                if not blunt:   # kicks, punches and butt strikes don't cut
+                    self.add_wound(vt, on, B, pt, seed)
+                    self.blood.append((vt, pt, dirx, 16 if kw.get("big") else 11, seed))
                 self.damage.append((vt, on, kw.get("dmg", 0)))
             elif k in ("armor", "shieldhit", "shieldbreak"):
                 A = f.joints(kw["by"], t)

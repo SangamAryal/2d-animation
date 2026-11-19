@@ -40,7 +40,10 @@ python3 fights/preview.py --fight NAME --frames 120,121,122 --scale 1 --cell 700
 ```
 Read each sheet and check, for every exchange:
 - [ ] anticipation visible before every attack (2+ frames moving the other way)
-- [ ] contact frame: weapon touches the target/blade, nothing passes through a body
+- [ ] contact frame: weapon touches the target/blade, nothing passes through a body.
+      Render every contact frame (+4 frames, after the impact flash) in one sheet:
+      `python3 -c "import render; r=render.Renderer('NAME',scale=0.5); print(','.join(str(int(round(v*60))+4) for v,k,d in r.fx if k in ('clash','hit')))"`
+      and check `Fight(NAME).contact_report` (last column = remaining gap, must be <= 3)
 - [ ] hit reaction moves the whole body, recoil direction matches the blow
 - [ ] arcs: hands and blades curve; no straight-line hand paths (`--onion`)
 - [ ] silhouettes readable; no limb hidden in the torso

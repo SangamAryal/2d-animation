@@ -68,6 +68,16 @@ pose("r_pull", T=-18, H=-10, uaf=150, faf=60, sw=96, grip=1,
 pose("r_victory", T=-4, H=-8, uaf=165, faf=150, sw=2, grip=0, uab=205, fab=190,
      thf=162, shf=182, thb=200, shb=188)
 
+# the big finishing reap (drawn): coil -> overhead arc -> cleave -> follow-through
+pose("r_coil", T=-28, H=-16, uaf=-6, faf=-35, sw=-70, grip=1,
+     thf=150, shf=178, thb=222, shb=232, sq=0.12)
+pose("r_arc", T=8, H=0, uaf=55, faf=35, sw=38, grip=1,
+     thf=122, shf=176, thb=232, shb=228, sq=0.1)
+pose("r_cleave", T=42, H=30, uaf=118, faf=128, sw=112, grip=1,
+     thf=102, shf=172, thb=248, shb=258, sq=-0.05)
+pose("r_follow", T=58, H=44, uaf=158, faf=170, sw=178, grip=1,
+     thf=96, shf=170, thb=252, shb=266, sq=-0.15)
+
 # samurai extras
 pose("s_slide", T=60, H=46, uaf=95, faf=88, uab=230, fab=250, sw=88, grip=0,
      thf=88, shf=95, thb=240, shb=265, sq=0.1)
@@ -87,7 +97,7 @@ def _shift(A, B, ev, t0, d):
         ev[j] = (t + d if t >= t0 else t, k, kw)
 
 
-def _round3(A, B, E, stop, rots, T0):
+def _round3(A, B, E, stop, rots, T0, drawn=True):
     """Inserted exchange: buzzsaw spin, a reap that bites the ground, the
     samurai's chest cut, and the reaper ripping the blade free."""
     ra, rb = rots
@@ -143,10 +153,19 @@ def _round3(A, B, E, stop, rots, T0):
     E(T(1.82), "clash", v=1.1, big=True)
     stop(T(1.82), 0.10)
     AK(1.84, "recoil", bx - 130, "snap")
-    AK(1.98, "stagger", ax - 10, "out")
+    if drawn:
+        # and plants a front kick in his chest while he's open
+        BK(1.87, "kick_wind", bx - 30, "back", sw=40, grip=1, uaf=150, faf=70, T=-4)
+        BK(1.93, "kick", bx - 66, "snap", sw=40, grip=1, uaf=150, faf=70)
+        E(T(1.93), "hit", by="B", on="A", v=1.0, dmg=6, part="ftf")
+        stop(T(1.93), 0.07)
+        AK(1.94, "recoil", bx - 150, "snap", T=-32, H=-30)
+        BK(2.00, "r_guard", bx + 40, "out")
+    else:
+        BK(1.96, "r_guard", bx + 40, "out")
+    AK(1.98 if not drawn else 2.0, "stagger", ax - 10, "out")
     E(T(1.98), "skid", x=ax - 10, v=1.0)
     # both reset to range: the reaper backs off, the samurai straightens
-    BK(1.96, "r_guard", bx + 40, "out")
     E(T(1.96), "step", who="B", v=0.6)
 
 
@@ -292,12 +311,27 @@ def build(drawn=True):
     BK(5.46, "r_side", bx + 40, "snap")
     E(5.46, "gust", x=bx + 120, v=1.0)
     AK(5.40, "crouch", ax + 6, "snap", T=52, H=42, sw=20, sq=-0.16)
-    AK(5.62, "guard_low", ax + 30, "out")
-    # reaper backs off and twirls the scythe
-    BK(5.62, "r_guard", bx + 20, "out")
-    BK(5.80, "r_twirl", bx - 10, "back", sw=0)
-    BK(6.30, "r_twirl", bx - 30, "lin", sw=720)
-    E(5.80, "twirl", dur=0.5, scythe=True)
+    if drawn:
+        # out of the duck he springs into a chambered side kick to the ribs
+        AK(5.54, "kick_wind", ax - 6, "back", T=-14, sq=-0.08)
+        AK(5.64, "kick", ax - 82, "snap", T=-34, sq=0.08)
+        E(5.64, "hit", by="A", on="B", v=1.0, dmg=6, part="ftf")
+        stop(5.64, 0.08)
+        AK(5.80, "kick_wind", ax - 60, "out")
+        AK(5.92, "guard_low", ax - 10, "io")
+        BK(5.56, "r_guard", bx + 30, "out")
+        BK(5.65, "r_hurt", bx + 10, "snap", T=-26)
+        BK(5.86, "r_guard", bx - 10, "out")
+        BK(5.95, "r_twirl", bx - 14, "back", sw=0)
+        BK(6.32, "r_twirl", bx - 30, "lin", sw=720)
+        E(5.95, "twirl", dur=0.37, scythe=True)
+    else:
+        AK(5.62, "guard_low", ax + 30, "out")
+        # reaper backs off and twirls the scythe
+        BK(5.62, "r_guard", bx + 20, "out")
+        BK(5.80, "r_twirl", bx - 10, "back", sw=0)
+        BK(6.30, "r_twirl", bx - 30, "lin", sw=720)
+        E(5.80, "twirl", dur=0.5, scythe=True)
     BK(6.42, "r_guard", bx - 40, "snap", sw=48 + 720 - 720)
     bx -= 40         # 200
     AK(6.00, "guard", ax + 20)
@@ -324,8 +358,14 @@ def build(drawn=True):
     bx += 50         # 360
     # the rising reap catches him on the landing
     BK(7.30, "r_low_sweep", bx + 4)
-    BK(7.38, "r_low_wind", bx - 4, "back", sw=-150, T=10)
-    BK(7.50, "r_high_wind", bx + 40, "snap", sw=-20)
+    if drawn:
+        # the rising reap swings forward-up under him (v1 swung it behind)
+        BK(7.38, "r_low_wind", bx - 4, "back", sw=210, T=10)
+        BK(7.50, "r_reach", bx + 70, "snap", sw=95, T=20, sq=0.1)
+        BK(7.60, "r_high_wind", bx + 76, "out", sw=20)
+    else:
+        BK(7.38, "r_low_wind", bx - 4, "back", sw=-150, T=10)
+        BK(7.50, "r_high_wind", bx + 40, "snap", sw=-20)
     E(7.50, "hit", by="B", on="A", v=1.2, big=True, dmg=18, part="blade_end")
     stop(7.50, 0.14)
     AK(7.40, "guard", ax)
@@ -381,7 +421,7 @@ def build(drawn=True):
     BK(10.57, "r_side", bx + 2, "lin", T=34, sw=104)
     # kick breaks it
     AK(10.64, "kick_wind", ax - 4, "back")
-    AK(10.74, "kick", ax + 10, "snap")
+    AK(10.74, "kick", ax + (48 if drawn else 10), "snap")
     E(10.74, "hit", by="A", on="B", v=1.0, dmg=8, part="ftf")
     stop(10.74, 0.09)
     BK(10.75, "r_hurt", bx + 4, "snap")
@@ -435,18 +475,37 @@ def build(drawn=True):
     B.face(t_c + 0.48, 1)
     BK(t_c + 0.48, "r_guard", xr + 6, "snap")
     t_k = t_c + 1.05
-    BK(t_k - 0.30, "r_high_wind", xr + 4, "back")
-    BK(t_k - 0.12, "r_reach", xr2, "snap")
-    E(t_k - 0.30, "heart", v=1.2)
-    A.face(t_k - 0.10, -1)
-    AK(t_k - 0.16, "iai_hold", xs + 6, H=-10)
-    AK(t_k - 0.06, "guard", xs + 4, "snap")
-    BK(t_k, "r_pull", xr2 - 30, "snap")
-    E(t_k - 0.01, "slowmo", a0=t_k - 0.12, a1=t_k - 0.01, rate=0.3)
+    if drawn:
+        # the big reap: a long coil, then one full-speed overhead arc through
+        # the neck with the whole body behind it, and a deep follow-through
+        BK(t_k - 0.58, "r_coil", xr - 4, "back")
+        BK(t_k - 0.20, "r_coil", xr - 10, "lin", T=-34, sw=-82, uaf=-18)
+        E(t_k - 0.50, "heart", v=1.2)
+        E(t_k - 0.50, "slowmo", a0=t_k - 0.50, a1=t_k - 0.17, rate=0.5)
+        BK(t_k - 0.075, "r_arc", xr2 - 46, "snap")
+        E(t_k - 0.10, "swoosh", v=1.3)
+        A.face(t_k - 0.12, -1)
+        AK(t_k - 0.18, "iai_hold", xs + 6, H=-10)
+        AK(t_k - 0.05, "guard", xs + 4, "snap")
+        BK(t_k, "r_cleave", xr2 - 14, "snap")
+        E(t_k, "gust", x=xs, v=1.4)
+        E(t_k, "ground", x=xs - 30, v=0.7)
+    else:
+        BK(t_k - 0.30, "r_high_wind", xr + 4, "back")
+        BK(t_k - 0.12, "r_reach", xr2, "snap")
+        E(t_k - 0.30, "heart", v=1.2)
+        A.face(t_k - 0.10, -1)
+        AK(t_k - 0.16, "iai_hold", xs + 6, H=-10)
+        AK(t_k - 0.06, "guard", xs + 4, "snap")
+        BK(t_k, "r_pull", xr2 - 30, "snap")
+        E(t_k - 0.01, "slowmo", a0=t_k - 0.12, a1=t_k - 0.01, rate=0.3)
     E(t_k, "decap", who="A", by="B")
     E(t_k + 0.01, "dmg", who="A", by="B", amt=100, big=True)
     E(t_k, "kill", song=True)
-    stop(t_k, 0.16)
+    stop(t_k, 0.22 if drawn else 0.16)
+    if drawn:
+        BK(t_k + 0.14, "r_follow", xr2 + 4, "out")
+        BK(t_k + 0.45, "r_follow", xr2 - 6, "io", T=40, H=26, sq=-0.04)
     AK(t_k + 0.01, "guard", xs + 4, "snap", headless=1)
     AK(t_k + 0.50, "kneel", xs + 2, "in", headless=1, grip=0, sw=150)
     E(t_k + 0.50, "thud", v=0.8)
@@ -454,7 +513,8 @@ def build(drawn=True):
     E(t_k + 1.10, "thud", v=1.0)
     E(t_k + 1.10, "dust", x=xs - 40, v=1.0)
     # the reaper straightens, twirls once and plants the scythe
-    BK(t_k + 0.45, "r_pull", xr2 - 34, "out")
+    if not drawn:
+        BK(t_k + 0.45, "r_pull", xr2 - 34, "out")
     BK(t_k + 1.00, "r_twirl", xr2 - 34, "back", sw=-90)
     BK(t_k + 1.45, "r_twirl", xr2 - 34, "lin", sw=630)
     E(t_k + 1.00, "twirl", dur=0.45, scythe=True)
@@ -464,7 +524,7 @@ def build(drawn=True):
     E(t_k + 0.6, "winner", name="REAPER WINS", color=VIOLET)
     end = t_k + 4.4 + D
     _shift(A, B, ev, T0, D)
-    _round3(A, B, E, stop, rot_snap, T0)
+    _round3(A, B, E, stop, rot_snap, T0, drawn)
     AK(end, "fallen", xs - 20, headless=1)
     BK(end, "r_victory", xr2 - 34)
     return dict(fighters=[("B", B, REAPER), ("A", A, SAMURAI)], events=ev, end=end,
