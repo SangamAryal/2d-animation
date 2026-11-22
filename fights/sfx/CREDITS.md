@@ -34,3 +34,8 @@ Fight 06 v3 (samurai vs knight). Not public domain; Sangam said copyrighted soun
 
 Fight 07 (scythe vs katana). Copyrighted, Sangam said that's fine:
 - `song_rave` = Dxrk ダーク "RAVE" (first 60 s; drop at 16.07 s), via github.com/gabriel654165/Very-Good-Cop.
+
+Fight 08 (chain sickle vs twin swords), chain sounds, loudness-normalised:
+- `chain_hit_1..3`: rpg80 chain sounds via github.com/Assangejulian/unwritten-world-civbench;
+  `chain_rattle`: via github.com/hoimankyuen/lilhorrorgame2026; `chain_drop`, `chain_pull`:
+  SoundBits chains via github.com/lmaxsmith/BubbleMath; `chain_reel`: ReelChains via github.com/maxlep/MeatScape.

@@ -229,8 +229,13 @@ class ChainSim:
         self.st = st
         self.S = st.get("size", 1.0)
         self.Lh = st.get("hold_len", 62) * self.S
-        self.nf, self.nh = 26, 9
-        self.drives = sorted([(t, kw) for t, k, kw in ev if k == "chain"], key=lambda e: e[0])
+        self.nf, self.nh = 26, 13
+        allc = sorted([(t, kw) for t, k, kw in ev if k == "chain"], key=lambda e: e[0])
+        # end="sickle" events steer the sickle once it is out of the hand (pose
+        # key nosw=1): it then hangs and flies on the held chain, whose length is
+        # the pose key ``hold``
+        self.drives = [e for e in allc if e[1].get("end", "weight") == "weight"]
+        self.sdrives = [e for e in allc if e[1].get("end") == "sickle"]
         self.loose = f.loose
         n = int((end + 0.6) / DT) + 2
         self.ts = np.arange(n) * DT
@@ -250,16 +255,20 @@ class ChainSim:
             _, who, key, dx, dy = w
             J = self.f.joints_raw(who, t)
             return (J[key][0] + dx * J["facing"], J[key][1] + dy)
+        if w[0] in ("M", "Mf"):   # point between two joints (a, b, u)
+            _, who, a, b, u = w
+            J = self.f.joints_raw(who, t0 if w[0] == "Mf" else t)
+            return (J[a][0] + (J[b][0] - J[a][0]) * u, J[a][1] + (J[b][1] - J[a][1]) * u)
         if w[0] == "L":   # point on a loose sword
             ls = self.loose[w[1]]
             P = ls.points(t)
             return P[w[2]]
         return w
 
-    def _drive(self, t, J, wpos, state):
+    def _drive(self, t, J, wpos, state, drives=None):
         """Returns (target or None, attach info)."""
         cur = None
-        for t0, kw in self.drives:
+        for t0, kw in (self.drives if drives is None else drives):
             if t0 <= t:
                 cur = (t0, kw)
         if cur is None:
@@ -334,7 +343,8 @@ class ChainSim:
         hx = np.array([a + (h - a) * k / (self.nh - 1) for k in range(self.nh)])
         hx[1:-1, 1] -= 10
         hxp = hx.copy()
-        state = {}
+        state, sstate = {}, {}
+        self.free_s = np.zeros(len(self.ts), bool)
         Lcur = reel
         inv = np.ones(self.nf)
         inv[-1] = 0.35
@@ -373,23 +383,45 @@ class ChainSim:
                 x[gnd, 1] = 1.5
                 xp[gnd, 0] += (x[gnd, 0] - xp[gnd, 0]) * 0.25
                 xp[gnd, 1] = np.minimum(xp[gnd, 1], 1.5)
-            # held loop
+            # held loop (sickle butt -> back hand)
+            free = J["p"].get("nosw", 0) > 0.5
             a = np.array(J["hilt0"], float)
-            hv = (hx - hxp) * 0.99
+            stg = None
+            if free:
+                stg, _ = self._drive(t, J, hx[0], sstate, self.sdrives)
+            hv = (hx - hxp) * (0.992 if free else 0.99)
             hxp = hx.copy()
             hx = hx + hv
             hx[:, 1] -= G * DT * DT
-            hseg = self.Lh / (self.nh - 1)
-            for _ in range(10):
-                hx[0], hx[-1] = a, hand
+            Lh = J["p"].get("hold", 62) * self.S if free else self.Lh
+            hseg = Lh / (self.nh - 1)
+            winv = np.ones(self.nh)
+            winv[-1] = 0.0
+            winv[0] = 0.0 if (not free or stg is not None) else 0.4
+            for _ in range(30 if free else 10):
+                if not free:
+                    hx[0] = a
+                elif stg is not None:
+                    hx[0] = stg
+                hx[-1] = hand
                 d = hx[1:] - hx[:-1]
                 L = np.maximum(1e-6, np.hypot(d[:, 0], d[:, 1]))
                 over = np.maximum(0.0, L - hseg) / L
-                corr = d * (over * 0.5)[:, None]
-                hx[:-1] += corr
-                hx[1:] -= corr
-            hx[0], hx[-1] = a, hand
-            hx[:, 1] = np.maximum(hx[:, 1], 1.5)
+                w0, w1 = winv[:-1], winv[1:]
+                ws = np.maximum(1e-6, w0 + w1)
+                corr = d * (over / ws)[:, None]
+                hx[:-1] += corr * w0[:, None]
+                hx[1:] -= corr * w1[:, None]
+            if not free:
+                hx[0] = a
+            elif stg is not None:
+                hx[0] = stg
+            hx[-1] = hand
+            hg = hx[:, 1] < 1.5
+            if hg.any():
+                hx[hg, 1] = 1.5
+                hxp[hg, 0] += (hx[hg, 0] - hxp[hg, 0]) * 0.3
+            self.free_s[i] = free
             self.F[i], self.Hd[i] = x, hx
             self.drv[i] = tgt is not None
             self.att[i] = att
@@ -403,6 +435,30 @@ class ChainSim:
 
     def weight(self, t):
         return tuple(self.at(t)[0][-1])
+
+    def sickle(self, t):
+        """(butt, tip of handle, blade end, blade ctrl, dir) of the sickle on the chain."""
+        Hd = self.at(t)[1]
+        b = Hd[0]
+        k = 2
+        d = Hd[0] - Hd[k]
+        L = max(1e-3, float(np.hypot(*d)))
+        ux, uy = d / L
+        S = self.S
+        hl = (self.st.get("blade", 24) + self.st.get("butt", 6)) * S
+        tip = (b[0] + ux * hl, b[1] + uy * hl)
+        # blade hooks to one side of the handle (same side as in the hand)
+        ang = math.radians(self.st.get("blade_ang", 96))
+        side = 1 if ux >= 0 else -1
+        ca, sa = math.cos(ang), math.sin(ang) * side
+        bx, by = ux * ca + uy * sa, -ux * sa + uy * ca
+        Lb = self.st.get("blade_len", 30) * S
+        be = (tip[0] + bx * Lb - ux * 7 * S, tip[1] + by * Lb - uy * 7 * S)
+        ct = (tip[0] + bx * Lb * 0.55 + ux * 8 * S, tip[1] + by * Lb * 0.55 + uy * 8 * S)
+        return dict(hilt0=tuple(b), tip=tip, blade_end=be, blade_ctrl=ct, sw_dir=(ux, uy), size=S)
+
+    def speed_s(self, t):
+        return math.dist(self.sickle(t)["blade_end"], self.sickle(t - 1 / 120)["blade_end"]) * 120
 
     def speed(self, t):
         return math.dist(self.weight(t), self.weight(t - 1 / 120)) * 120
@@ -456,6 +512,15 @@ class ChainSim:
                 c.rotate(ang)
                 c.drawOval(skia.Rect(-2.2 * S, -5.6 * S, 2.2 * S, 5.6 * S), stroke(col(dark), 2.4 * S))
                 c.restore()
+        i_ = int(np.clip(round(t / DT), 0, len(self.ts) - 1))
+        if self.free_s[i_]:
+            K = self.sickle(t)
+            if not flat and self.speed_s(t) > 700:
+                pts = [self.sickle(t - k * 0.008)["blade_end"] for k in range(10)]
+                for k in range(1, len(pts)):
+                    line(c, pts[k - 1], pts[k], stroke(col(self.st.get("trail", "#ffffff"),
+                                                           0.5 * (1 - k / len(pts))), (8 - k * 0.6) * S))
+            draw_sickle(c, K, self.st, 1.0, flat)
         w = tuple(F[-1])
         if att is None:
             prev = tuple(F[-2])
@@ -474,6 +539,8 @@ def draw_loose(c, ls, t, flat=None):
     if t < ls.t0:
         return
     P = ls.points(t)
+    if ls.kw.get("tp") is not None and t >= ls.kw["tp"]:
+        return    # picked back up
     if ls.kind == "fling" and t >= ls.tl:
         c.save()
         c.clipRect(skia.Rect(-1e5, 0, 1e5, 1e5))

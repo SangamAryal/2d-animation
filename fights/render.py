@@ -25,7 +25,7 @@ from draw import scythe_points  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe", "chain": "choreo_chain"}
+FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe", "chain": "choreo_chain", "chain2": "choreo_chain2"}
 
 
 def typeface(weight="ExtraBold"):
@@ -37,7 +37,7 @@ def typeface(weight="ExtraBold"):
 
 # ------------------------------------------------------------ time map
 def build_timemap(ev, end):
-    stops = sorted((t, kw["dur"]) for t, k, kw in ev if k == "hitstop")
+    stops = sorted((t, kw["dur"]) for t, k, kw in ev if k in ("hitstop", "freezeframe"))
     slows = [(kw["a0"], kw["a1"], kw["rate"]) for t, k, kw in ev if k == "slowmo"]
     frames = []
     t = 0.0
@@ -144,9 +144,11 @@ class Fight:
         self.ev = d["events"]
         self.end = d["end"]
         self.title = d["title"]
-        self.hp = d.get("hp", [])
+        # health bars are off for all fights (Sangam, 2026-11-22); show_hp=True brings them back
+        self.hp = d.get("hp", []) if d.get("show_hp") else []
         self.theme = d.get("theme", "day")
         self.springy = d.get("springy", False)
+        self.red_hits = d.get("red_hits", False)   # dark red impact frames on cuts
         self.fluid = d.get("fluid", False)
         self.feet = {}
         self.tracks = {i: (tr, st) for i, tr, st in self.fighters}
@@ -207,6 +209,9 @@ class Fight:
             for t, k, kw in self.ev:
                 if kw.get("at_weight"):
                     kw["contact"] = self.chain.weight(t)
+                elif kw.get("at_sickle"):
+                    K = self.chain.sickle(t)
+                    kw["contact"] = ((K["tip"][0] + K["blade_end"][0]) / 2, (K["tip"][1] + K["blade_end"][1]) / 2)
                 elif kw.get("at_loose") is not None:
                     ls = self.loose[kw["at_loose"]]
                     kw["contact"] = ls.D if ls.kind == "throw" else ls.points(t)["mid"]
@@ -289,6 +294,9 @@ class Renderer:
         self.decaps = []     # (t, who, J_victim, J_attacker)
         self.banners = []    # (vt, text)
         self.shield_breaks = []  # (t, who, J, push dir)
+        self.slows = []      # every slow-motion window (vt0, vt1): the camera leans in
+        self.freezes = []    # freeze-frames (vt0, vt1, kw)
+        self.camev = []      # camera framing windows (vt0, vt1, kw)
         self.hp = f.hp
         self.el = []         # elemental effects (elements.py)
         self.el_marks = {}
@@ -304,7 +312,12 @@ class Renderer:
                 self.fx.append((vt, k, dict(kw, pt=pt, seed=seed)))
             elif k == "hit":
                 A = f.joints(kw["by"], t)
-                if kw.get("contact"):
+                if kw.get("limb"):
+                    a_, b_, u_ = kw["limb"]
+                    Bv = f.joints(kw.get("on") or f.other(kw["by"]), t)
+                    pt = (Bv[a_][0] + (Bv[b_][0] - Bv[a_][0]) * u_,
+                          Bv[a_][1] + (Bv[b_][1] - Bv[a_][1]) * u_)
+                elif kw.get("contact"):
                     pt = kw["contact"]
                 elif kw.get("part") in A:
                     pt = A[kw["part"]]
@@ -317,8 +330,8 @@ class Renderer:
                 dirx = 1.0 if B["hip"][0] > A["hip"][0] else -1.0
                 blunt = f.drawn and kw.get("part") in ("ftf", "ftb", "haf", "hab", "hilt0", "chain")
                 if not blunt:   # kicks, punches and butt strikes don't cut
-                    self.add_wound(vt, on, B, pt, seed)
-                    self.blood.append((vt, pt, dirx, 16 if kw.get("big") else 11, seed))
+                    self.add_wound(vt, on, B, pt, seed, kw.get("limb"))
+                    self.blood.append((vt, pt, dirx, kw.get("blood", 16 if kw.get("big") else 11), seed))
                 self.damage.append((vt, on, kw.get("dmg", 0)))
             elif k in ("armor", "shieldhit", "shieldbreak"):
                 A = f.joints(kw["by"], t)
@@ -358,9 +371,12 @@ class Renderer:
                 A, B = f.joints(kw["by"], t), f.joints(kw["who"], t)
                 pt = ((B["hip"][0] * 0.4 + B["neck"][0] * 0.6),
                       (B["hip"][1] * 0.4 + B["neck"][1] * 0.6))
+                if kw.get("limb"):
+                    a_, b_, u_ = kw["limb"]
+                    pt = (B[a_][0] + (B[b_][0] - B[a_][0]) * u_, B[a_][1] + (B[b_][1] - B[a_][1]) * u_)
                 dirx = 1.0 if B["hip"][0] > A["hip"][0] else -1.0
-                self.add_wound(vt, kw["who"], B, pt, seed)
-                self.add_wound(vt, kw["who"], B, pt, seed + 1)
+                self.add_wound(vt, kw["who"], B, pt, seed, kw.get("limb"))
+                self.add_wound(vt, kw["who"], B, pt, seed + 1, kw.get("limb"))
                 self.blood.append((vt, pt, dirx, 34 if kw.get("big") else 22, seed))
                 self.damage.append((vt, kw["who"], kw["amt"]))
             elif k == "slam":
@@ -380,10 +396,17 @@ class Renderer:
             elif k == "slowmo":
                 self.slow_vt = (video_time(self.frames, kw["a0"]),
                                 video_time(self.frames, kw["a1"]))
+                self.slows.append(self.slow_vt)
                 self.cues.append((self.slow_vt[0], "riser",
                                   dict(dur=self.slow_vt[1] - self.slow_vt[0] + 0.1)))
             elif k == "break":
                 self.breaks.append((t, kw["who"], f.joints(kw["who"], t)))
+            elif k == "freezeframe":
+                # the story clock stops (build_timemap); the frame holds, drains of
+                # colour except the blood, and the camera pushes in
+                self.freezes.append((vt, vt + kw["dur"], kw))
+            elif k == "cam":
+                self.camev.append((vt, video_time(self.frames, kw["until"]), kw))
             elif k == "winner":
                 self.win = (vt, kw["name"], kw.get("color", "#d8323c"))
             elif k == "banner":
@@ -396,6 +419,8 @@ class Renderer:
                 self.fx.append((vt, k, dict(kw, seed=seed)))
                 if k == "charge":
                     self.cues.append((vt, "riser", dict(dur=kw["dur"])))
+            if "drop_at" in kw:
+                kw = dict(kw, vdrop=video_time(self.frames, kw["drop_at"]))
             if "duck_at" in kw:
                 kw = dict(kw, vduck=video_time(self.frames, kw["duck_at"]))
             if "stop_at" in kw:
@@ -419,7 +444,12 @@ class Renderer:
         powers.finish(self)
         self.auto_swooshes()
 
-    def add_wound(self, vt, who, B, pt, seed):
+    def add_wound(self, vt, who, B, pt, seed, limb=None):
+        if limb:
+            rng = np.random.default_rng(seed + 5)
+            self.wounds.setdefault(who, []).append(
+                (vt, limb, rng.uniform(-0.6, 0.6), rng.uniform(9, 13)))
+            return
         hx, hy = B["hip"]
         nx, ny = B["neck"]
         vx, vy = nx - hx, ny - hy
@@ -508,26 +538,46 @@ class Renderer:
                 mid, dist = J["hip"][0], 160
             else:
                 mid, dist = (min(xs) + max(xs)) / 2, max(xs) - min(xs)
+            zk, slow_k = 1.0, 0.05
+            for a, b, kw in self.camev:          # dramatic framing windows
+                if a <= vt < b:
+                    u = min(1, (vt - a) / kw.get("ease", 0.4), (b - vt) / kw.get("ease", 0.4))
+                    u = u * u * (3 - 2 * u)
+                    zk *= 1 + (kw.get("zoom", 1.3) - 1) * u
+                    if kw.get("who"):
+                        Jw = f.joints(kw["who"], t)
+                        wx = Jw["hip"][0] + kw.get("dx", 0) * Jw["facing"]
+                        mid += (wx - mid) * u * kw.get("pull", 0.6)
+                    slow_k = kw.get("rate", 0.05)
+            for a, b, kw in self.freezes:        # freeze-frame: slow push in
+                if a <= vt < b:
+                    u = (vt - a) / (b - a)
+                    zk *= 1 + kw.get("zoom", 0.22) * (1 - (1 - u) ** 2)
+                    if kw.get("x") is not None:
+                        mid += (kw["x"] - mid) * min(1, u * 3)
+                    slow_k = 0.08
             if self.wide:
                 tz = min(self.W / (dist + 700), 2.8 * self.s)
             elif f.springy:
                 tz = min(self.W / (dist + 190), 2.9 * self.s)
             else:
                 tz = min(self.W / (dist + 260), 3.2 * self.s)
-            if self.slow_vt and self.slow_vt[0] <= vt <= self.slow_vt[1] + 0.05:
-                u = (vt - self.slow_vt[0]) / (self.slow_vt[1] - self.slow_vt[0])
-                tz *= 1 + 0.25 * min(1, u)
+            for s0, s1 in self.slows:
+                if s0 <= vt <= s1 + 0.05:
+                    u = (vt - s0) / max(1e-3, s1 - s0)
+                    tz *= 1 + 0.25 * min(1, u)
+            tz *= zk
             if cx is None:
                 cx, z = mid, tz
             cx += (mid - cx) * 0.10
-            z += (tz - z) * (0.10 if tz < z else 0.05)
+            z += (tz - z) * (0.10 if tz < z else slow_k)
             if self.iai_vt is not None and 0 <= vt - self.iai_vt < 0.2:
                 cx, z = mid, tz
             cams.append((cx, z))
         self.cams = cams
 
     def tilt(self, vt):
-        if not self.f.springy:
+        if not self.f.springy or self.frozen(vt):
             return 0.0
         a = 0.0
         for et, k, d in self.fx:
@@ -553,8 +603,16 @@ class Renderer:
             p_.close()
             c.drawPath(p_, fill(col(flat or "#ffffff", 0.9)))
 
+    def frozen(self, vt):
+        for a, b, kw in getattr(self, "freezes", []):
+            if a <= vt < b:
+                return a, b, kw
+        return None
+
     def shake_punch(self, vt):
         sx = sy = punch = 0.0
+        if self.frozen(vt):
+            return sx, sy, punch
         if powers.stopped_vt(self, vt):
             return sx, sy, punch
         for et, k, d in self.fx:
@@ -821,6 +879,8 @@ class Renderer:
                 J = chain.sword_view(J, second)
             if J["p"]["sheath"] > 0.5 or (k and J["facing"] != fc0):
                 break
+            if st.get("sword") == "sickle" and J["p"].get("nosw", 0) > 0.5:
+                break
             if not k:
                 fc0 = J["facing"]
             if "blade_end" in J:
@@ -1009,7 +1069,8 @@ class Renderer:
                 draw_scythe(c, J, style, 1.0, flat)
             elif style.get("sword") == "sickle":
                 import chain
-                chain.draw_sickle(c, J, style, 1.0, flat)
+                if p.get("nosw", 0) < 0.5:
+                    chain.draw_sickle(c, J, style, 1.0, flat)
             elif style.get("twin"):
                 import chain
                 for second, key in ((False, "nosw"), (True, "nosw2")):
@@ -1333,8 +1394,13 @@ class Renderer:
         for et, u, ang, ln in self.wounds.get(who, []):
             if vt < et:
                 continue
-            x, y = hx + (nx - hx) * u, hy + (ny - hy) * u
-            a = base + math.pi / 2 + ang
+            if isinstance(u, tuple):    # a cut on a limb: (joint a, joint b, u)
+                ja, jb, uu = u
+                x, y = J[ja][0] + (J[jb][0] - J[ja][0]) * uu, J[ja][1] + (J[jb][1] - J[ja][1]) * uu
+                a = math.atan2(J[jb][1] - J[ja][1], J[jb][0] - J[ja][0]) + math.pi / 2 + ang
+            else:
+                x, y = hx + (nx - hx) * u, hy + (ny - hy) * u
+                a = base + math.pi / 2 + ang
             L = ln * S * 0.5 * min(1, (vt - et) / 0.05)
             ux, uy = math.cos(a), math.sin(a)
             c.drawLine(x - ux * L, y - uy * L, x + ux * L, y + uy * L,
@@ -1498,6 +1564,10 @@ class Renderer:
         f = self.f
         t = self.frames[i]
         vt = i / FPS
+        real_vt = vt
+        fr = self.frozen(vt)
+        if fr:
+            vt = fr[0]        # effects hold too: blood hangs in the air
         cx, z = self.cams[i]
         shx, shy, punch = self.shake_punch(vt)
         z *= 1 + punch
@@ -1505,13 +1575,15 @@ class Renderer:
 
         mode = "normal"
         self.impact_pt = None
+        self.red_impact = False
         for et, k, d in self.fx:
-            dtf = (vt - et) * FPS
+            dtf = (real_vt - et) * FPS
             if (k in ("clash", "hit", "decap", "boom") and d.get("big") or k == "slam") and 0 <= dtf < 3:
                 mode = "invert"
                 if self.f.springy:
                     mode = "invert" if int(dtf) != 1 else "bw"
                     self.impact_pt = d.get("pt")
+                self.red_impact = self.f.red_hits and k in ("hit", "decap")
             if k == "iai":
                 if 0 <= dtf < 3:
                     mode = "white"
@@ -1521,8 +1593,8 @@ class Renderer:
         if self.slow_vt and self.iai_vt and self.slow_vt[0] <= vt < self.iai_vt:
             u = (vt - self.slow_vt[0]) / max(1e-3, self.iai_vt - self.slow_vt[0])
             dark = 0.35 * min(1, u * 2)
-        if self.iai_vt and 0 <= vt - self.iai_vt < 2.0 and mode == "normal":
-            dark = 0.35 * max(0, 1 - (vt - self.iai_vt - 0.27) / 1.2)
+        if self.iai_vt and 0 <= real_vt - self.iai_vt < 2.0 and mode == "normal":
+            dark = 0.35 * max(0, 1 - (real_vt - self.iai_vt - 0.27) / 1.2)
         for et, k, d in self.fx:
             if k == "charge" and 0 <= vt - et < d["dur"] + 0.6:
                 u = (vt - et) / d["dur"]
@@ -1542,14 +1614,19 @@ class Renderer:
         sw_who, sg, _, _ = powers.stop_state(self, t)
         if sg > 0:
             c.saveLayer(None, powers.gray_paint(sg, cold=self.f.theme == "night"))
+        fg = 0.0
+        if fr:   # freeze-frame: drain the colour (the blood is drawn after, in colour)
+            fg = min(1.0, (real_vt - fr[0]) / 0.12) * 0.92
+            c.saveLayer(None, powers.gray_paint(fg))
         if mode in ("invert", "slash"):
-            c.clear(col("#0d0b10"))
+            c.clear(col("#3a050b" if self.red_impact else "#0d0b10"))
         elif mode == "bw":
             c.clear(col("#f4f1ea"))
         else:
             self.background(c, cx, z, dark)
 
-        flat = "#f4f1ea" if mode in ("invert", "slash") else ("#0d0b10" if mode == "bw" else None)
+        flat = "#f4f1ea" if mode in ("invert", "slash") else (
+            ("#6e0a12" if self.red_impact else "#0d0b10") if mode == "bw" else None)
         c.save()
         c.translate(W / 2 - cx * z + shx, self.gy + shy)
         c.scale(z, -z)
@@ -1599,6 +1676,17 @@ class Renderer:
         self.broken_pieces(c, t, flat)
         self.shield_pieces(c, t, flat)
         self.head_piece(c, t, flat)
+        if fg > 0:     # leave the gray layer: blood and wounds stay red
+            c.restore()
+            c.restore()
+            c.saveLayer(None, None)
+            c.save()
+            c.translate(W / 2 - cx * z + shx, self.gy + shy)
+            c.scale(z, -z)
+            for who in f.ids:
+                Jw = f.joints(who, t)
+                if not Jw["p"].get("hidden"):
+                    self.draw_wounds(c, who, Jw, vt, flat)
         self.neck_fountain(c, t, "#f4f1ea" if flat else None)
         self.draw_blood(c, vt, "#f4f1ea" if flat else None)
         self.draw_fx(c, vt)
@@ -1636,8 +1724,26 @@ class Renderer:
                 r = 40 * self.s * math.sin(math.pi * u)
                 self.star(c, W * 0.18, H * 0.27, r, 1.0, 4, 7, "#ffd84a")
         c.restore()   # end of camera tilt
+        if fg > 0:
+            c.restore()
+        self.letterbox(c, real_vt, fr)
         if mode == "normal":
-            self.overlay_text(c, vt)
+            self.overlay_text(c, real_vt)
+
+    def letterbox(self, c, vt, fr):
+        """Cinema bars for the big story moments (cam bars=True, freeze-frames)."""
+        h = 0.0
+        for a, b, kw in self.camev:
+            if kw.get("bars") and a - 0.3 <= vt < b + 0.3:
+                h = max(h, min(1, (vt - a + 0.3) / 0.3, (b + 0.3 - vt) / 0.3))
+        for a, b, kw in self.freezes:
+            if a <= vt:
+                h = max(h, min(1, (vt - a) / 0.15) * (1 if vt < b + kw.get("bars_after", 99) else 0))
+        if h <= 0:
+            return
+        bh = 0.085 * self.H * h
+        c.drawRect(skia.Rect(0, 0, self.W, bh), fill(col("#000000")))
+        c.drawRect(skia.Rect(0, self.H - bh, self.W, self.H), fill(col("#000000")))
 
     def overlay_text(self, c, vt):
         W, H, s = self.W, self.H, self.s

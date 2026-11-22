@@ -292,8 +292,9 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
     if style.get("hood") and not headless:
         draw_hood(c, hx, hy, ux, uy, rx, ry, R, S, style, J["facing"], alpha, flat)
     if style.get("sword") == "sickle":
-        from chain import draw_sickle
-        draw_sickle(c, J, style, alpha, flat)
+        if p.get("nosw", 0) < 0.5:   # out of the hand: chain.py draws it on the chain
+            from chain import draw_sickle
+            draw_sickle(c, J, style, alpha, flat)
     elif p.get("nosw", 0) > 0.5:
         pass
     elif style.get("sword") == "scythe":

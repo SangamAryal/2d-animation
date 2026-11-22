@@ -58,6 +58,8 @@ def weapon_segs(J, st):
             out.append((J["guardb"], J["tipb"], True))
         return out
     if st.get("sword") == "sickle":
+        if J["p"].get("nosw", 0) > 0.5:
+            return []
         return [(J["hilt0"], J["tip"], False), (J["tip"], J["blade_end"], True)]
     if J["p"].get("sheath", 0) > 0.5 and st.get("sword") not in ("scythe", "spear"):
         return []

@@ -520,6 +520,7 @@ def song(kw, t_in, t_drop, dur):
     Fades in at t_in (from wherever the track is at that moment), ducks under
     the climax from vduck until the drop, then plays out loud and fades at the end."""
     x = sample(kw["name"])
+    t_drop = kw.get("vdrop", t_drop)     # drop_at: the drop lands on that moment instead of the kill
     out = np.zeros(int((dur + 1) * SR))
     start = t_drop - kw["drop"]          # video time where the track's 0:00 sits
     i0 = int(max(t_in, start + kw.get("skip", 0.0)) * SR)
