@@ -112,7 +112,7 @@ pose("k_lock", T=-8, H=-4, uaf=92, faf=48, sw=62, uab=110, fab=70, reel=58,
      thf=128, shf=180, thb=232, shb=212)
 pose("k_slide", T=34, H=24, uaf=140, faf=90, sw=40, uab=225, fab=240, reel=58,
      thf=104, shf=160, thb=244, shb=258, sq=-0.12)
-pose("k_taut", T=-6, H=-8, uaf=35, faf=28, sw=8, uab=-22, fab=-32, reel=50,
+pose("k_taut", T=-6, H=-8, uaf=35, faf=28, sw=8, uab=-35, fab=-35, reel=50,
      thf=140, shf=182, thb=222, shb=204)
 pose("k_taut_v", T=4, H=0, uaf=140, faf=110, sw=200, uab=60, fab=30, reel=50,
      thf=135, shf=182, thb=224, shb=205)
@@ -446,12 +446,12 @@ def build(drawn=True):
     E(t + 0.10, "slowmo", a0=t + 0.10, a1=t + 0.42, rate=0.45)
     tc = t + 0.50
     BK(tc - 0.05, "t_desp_wind", bx + 2, "lin", nosw=1, T=-20)
-    BK(tc, "t_desp", bx - 50, "snap", nosw=1)
+    BK(tc, "t_desp", bx - 50, "snap", nosw=1, uab=60, fab=95, sw2=135)
     AK(tc - 0.05, "k_taut", xa - 16, "snap")
     E(tc, "clash", v=1.2, big=True, blade=2, chain=True)
     stop(tc, 0.14)
     AK(tc + 0.14, "k_twist", xa - 10, "snap")
-    BK(tc + 0.14, "t_desp", bx - 46, "snap", nosw=1, uab=100, fab=100, sw2=150)
+    BK(tc + 0.14, "t_desp", bx - 46, "snap", nosw=1, uab=80, fab=100, sw2=165)
     E(tc + 0.14, "chainwrap", v=0.8)
     tp = tc + 0.30
     AK(tp, "k_yank", xa - 30, "snap")

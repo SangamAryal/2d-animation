@@ -1077,6 +1077,16 @@ class Renderer:
                     r = 20 + dt * 1100
                     c.drawCircle(px, py, r, stroke(col("#ffffff", 0.8 * (1 - dt / 0.3)),
                                                    6 * (1 - dt / 0.3) + 1))
+            elif k == "hit" and dt < 0.22 and self.f.drawn and \
+                    d.get("part") in ("ftf", "ftb", "haf", "hab", "hilt0", "chain"):
+                # blunt blow: a punch ring and dust, no cut mark
+                a = 1 - dt / 0.22
+                c.drawCircle(px, py, 10 + dt * 260, stroke(col("#ffffff", 0.85 * a), 5 * a + 1))
+                for i in range(7):
+                    an = rng.uniform(0, 2 * math.pi)
+                    c.drawLine(px + math.cos(an) * (14 + dt * 200), py + math.sin(an) * (14 + dt * 200),
+                               px + math.cos(an) * (26 + dt * 330), py + math.sin(an) * (26 + dt * 330),
+                               stroke(col("#ffffff", a), 3 * a + 0.5))
             elif k == "hit" and dt < 0.3:
                 # bright slash mark across the body + small sparks
                 ang = rng.uniform(-0.9, 0.9) + (math.pi / 2 if rng.random() < 0.4 else 0)
