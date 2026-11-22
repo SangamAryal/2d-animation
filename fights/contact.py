@@ -50,6 +50,15 @@ def _seg_seg(p1, q1, p2, q2):
 
 def weapon_segs(J, st):
     """Hard parts of a fighter's weapon as segments (with a 'blade' flag)."""
+    if st.get("twin"):
+        out = []
+        if J["p"].get("nosw", 0) < 0.5:
+            out.append((J["guard"], J["tip"], True))
+        if J["p"].get("nosw2", 0) < 0.5 and "tipb" in J:
+            out.append((J["guardb"], J["tipb"], True))
+        return out
+    if st.get("sword") == "sickle":
+        return [(J["hilt0"], J["tip"], False), (J["tip"], J["blade_end"], True)]
     if J["p"].get("sheath", 0) > 0.5 and st.get("sword") not in ("scythe", "spear"):
         return []
     if st.get("sword") == "scythe":
@@ -62,11 +71,22 @@ def _sub(a, b, u0, u1):
     return tuple(a + (b - a) * u0), tuple(a + (b - a) * u1)
 
 
-def clash_segs(J, st):
+def clash_segs(J, st, blade=None, chain=False):
     """Parts of a weapon that may meet another weapon in a clash: the blade
     from a quarter of its length out (never the guard, hilt or hands), the
     scythe's crescent, and the upper 55% of its shaft (well away from the
     hands)."""
+    if st.get("twin"):
+        out = []
+        if J["p"].get("nosw", 0) < 0.5 and blade in (None, 1):
+            out.append(_sub(J["guard"], J["tip"], 0.25, 0.97))
+        if J["p"].get("nosw2", 0) < 0.5 and "tipb" in J and blade in (None, 2):
+            out.append(_sub(J["guardb"], J["tipb"], 0.25, 0.97))
+        return out
+    if st.get("sword") == "sickle":
+        if chain:   # the held chain pulled taut between the two hands
+            return [_sub(J["hilt0"], J["hab"], 0.12, 0.88)]
+        return [_sub(J["hilt0"], J["tip"], 0.5, 1.0), (J["tip"], J["blade_end"])]
     if J["p"].get("sheath", 0) > 0.5 and st.get("sword") not in ("scythe", "spear"):
         return []
     if st.get("sword") == "scythe":
@@ -85,7 +105,8 @@ def shapes(f, kind, kw, JA, JB, a_id, b_id):
     """Two lists of segments that must touch for this event."""
     sa, sb = f.tracks[a_id][1], f.tracks[b_id][1]
     if kind in ("clash", "lock"):
-        return clash_segs(JA, sa), clash_segs(JB, sb)
+        bl, ch = kw.get("blade"), kw.get("chain", False)
+        return clash_segs(JA, sa, bl, ch), clash_segs(JB, sb, bl, ch)
     by = kw.get("by")
     att, vic = (JA, JB) if by == a_id else (JB, JA)
     st = sa if by == a_id else sb
@@ -190,6 +211,8 @@ def solve_contacts(f, verbose=False):
         if k not in TOL or (k == "hit" and not kw.get("by")):
             continue
         if k == "decap" and not kw.get("by"):
+            continue
+        if kw.get("nosolve"):     # contact placed by construction (chain, thrown sword)
             continue
 
         def g_at(tt):

@@ -25,7 +25,7 @@ from draw import scythe_points  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe"}
+FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe", "chain": "choreo_chain"}
 
 
 def typeface(weight="ExtraBold"):
@@ -195,6 +195,21 @@ class Fight:
         if self.drawn:
             import contact
             self.contact_report = contact.solve_contacts(self)
+        self.loose, self.chain = {}, None
+        if any(st.get("sword") == "sickle" for _, _, st in self.fighters):
+            import chain
+            for t, k, kw in self.ev:
+                if k == "loose":
+                    self.loose[kw["id"]] = chain.LooseSword(self, dict(kw, t0=t))
+            who = [i for i, _, st in self.fighters if st.get("sword") == "sickle"][0]
+            self.chain_who = who
+            self.chain = chain.ChainSim(self, who, self.ev, self.end)
+            for t, k, kw in self.ev:
+                if kw.get("at_weight"):
+                    kw["contact"] = self.chain.weight(t)
+                elif kw.get("at_loose") is not None:
+                    ls = self.loose[kw["at_loose"]]
+                    kw["contact"] = ls.D if ls.kind == "throw" else ls.points(t)["mid"]
         if self.fluid:
             import feet
             for i, tr, st in self.fighters:
@@ -208,6 +223,8 @@ class Fight:
         if an:
             dsw, dx = self.corr[who].at(t, an)
             p["sw"] += dsw
+            if st.get("twin"):
+                p["sw2"] += dsw
             x += dx
         J = solve(p, x, tr.facing_smooth(t) if self.drawn else tr.facing(t),
                   size=st.get("size", 1.0),
@@ -215,6 +232,12 @@ class Fight:
                   butt=st.get("butt", 8.0), drawn=self.drawn)
         if st.get("sword") == "scythe":
             scythe_points(J, st)
+        elif st.get("sword") == "sickle":
+            import chain
+            chain.sickle_points(J, st)
+        if st.get("twin"):
+            import chain
+            chain.twin_points(J, st)
         return J
 
     def joints(self, who, t):
@@ -283,7 +306,7 @@ class Renderer:
                 A = f.joints(kw["by"], t)
                 if kw.get("contact"):
                     pt = kw["contact"]
-                elif kw.get("part"):
+                elif kw.get("part") in A:
                     pt = A[kw["part"]]
                 else:
                     B = f.joints(kw["on"], t)
@@ -292,7 +315,7 @@ class Renderer:
                 on = kw.get("on") or f.other(kw["by"])
                 B = f.joints(on, t)
                 dirx = 1.0 if B["hip"][0] > A["hip"][0] else -1.0
-                blunt = f.drawn and kw.get("part") in ("ftf", "ftb", "haf", "hab", "hilt0")
+                blunt = f.drawn and kw.get("part") in ("ftf", "ftb", "haf", "hab", "hilt0", "chain")
                 if not blunt:   # kicks, punches and butt strikes don't cut
                     self.add_wound(vt, on, B, pt, seed)
                     self.blood.append((vt, pt, dirx, 16 if kw.get("big") else 11, seed))
@@ -429,9 +452,19 @@ class Renderer:
             dt = 1 / 240
             t = 0.0
             prev = None
+            twin = st.get("twin")
+            prev2, last2 = None, -9
             while t < f.end:
                 J = f.joints(who, t)
                 tip = J.get("blade_end", J["tip"])
+                if twin and "tipb" in J:
+                    if prev2 is not None and J["p"].get("nosw2", 0) < 0.5:
+                        sp2 = math.hypot(J["tipb"][0] - prev2[0], J["tipb"][1] - prev2[1]) / dt
+                        if sp2 > 1600 and t - last2 > 0.09 and t - last > 0.05:
+                            self.cues.append((video_time(self.frames, t), "swoosh",
+                                              dict(v=min(1.0, 0.5 + sp2 / 6000))))
+                            last2 = t
+                    prev2 = J["tipb"]
                 if prev is not None and J["p"]["sheath"] < 0.5:
                     sp = math.hypot(tip[0] - prev[0], tip[1] - prev[1]) / dt
                     gap = 0.3 if heavy else 0.09
@@ -444,6 +477,16 @@ class Renderer:
                                                scythe=scythe)))
                         last = t
                 prev = tip
+                t += dt
+
+        if f.chain is not None:
+            t, last, dt = 0.0, -9, 1 / 120
+            while t < f.end:
+                sp = f.chain.speed(t)
+                if sp > 1500 and t - last > 0.16:
+                    self.cues.append((video_time(self.frames, t), "chainwhoosh",
+                                      dict(v=min(1.0, 0.4 + sp / 5000))))
+                    last = t
                 t += dt
 
     # ---------------------------------------------------- camera
@@ -580,9 +623,96 @@ class Renderer:
         if dark > 0:
             c.drawRect(skia.Rect(0, 0, W, H), fill(col("#050410", dark)))
 
+    def background_meadow(self, c, cx, z, dark):
+        """Day meadow: pale sky, far snowy mountains, green hills, grass floor."""
+        W, H, gy, s = self.W, self.H, self.gy, self.s
+        sky = skia.Paint()
+        sky.setShader(skia.GradientShader.MakeLinear(
+            [(0, 0), (0, gy)], [col("#9cc6e4").toColor(), col("#e8f1f4").toColor()]))
+        c.drawRect(skia.Rect(0, 0, W, gy), sky)
+        sxp = W * 0.72 - cx * 0.03 * s
+        sy_ = gy - 0.36 * H
+        c.drawCircle(sxp, sy_, 0.16 * W, fill(col("#fff8e0", 0.25)))
+        c.drawCircle(sxp, sy_, 0.07 * W, fill(col("#fffaf0", 0.9)))
+        rng = np.random.default_rng(11)
+        for i in range(4):   # soft clouds
+            x0 = (rng.uniform(0, W * 1.4) - cx * 0.02 * s) % (W * 1.4) - W * 0.2
+            y0 = rng.uniform(0.12, 0.3) * gy
+            for j in range(5):
+                c.drawCircle(x0 + j * 34 * s, y0 + math.sin(j * 1.7) * 9 * s, (26 + 10 * math.sin(j * 2.3)) * s,
+                             fill(col("#ffffff", 0.55)))
+        # far mountains with snow caps
+        def ridge(par, base, amp, seed):
+            pts = []
+            for i in range(0, W + 24, 12):
+                wx = (i - W / 2) / (par * max(z, 1e-3)) * 0.35 + cx * par + seed
+                h = base + amp * (0.55 * abs(math.sin(wx * 0.0021)) + 0.3 * abs(math.sin(wx * 0.0047 + 1.3))
+                                  + 0.15 * math.sin(wx * 0.013 + 0.4))
+                pts.append((i, gy - h * s))
+            return pts
+        far = ridge(0.04, 170, 380, 300)
+        path = skia.Path()
+        path.moveTo(0, gy)
+        for q in far:
+            path.lineTo(*q)
+        path.lineTo(W, gy)
+        path.close()
+        c.drawPath(path, fill(col("#a9bccd")))
+        snow = skia.Path()
+        snow.moveTo(0, gy)
+        top = min(q[1] for q in far)
+        for q in far:
+            snow.lineTo(q[0], q[1])
+        for q in reversed(far):
+            snow.lineTo(q[0], q[1] + max(0.0, (q[1] - top) * -0.0 + 70 * s - (q[1] - top) * 0.45))
+        snow.close()
+        c.save()
+        c.clipRect(skia.Rect(0, 0, W, top + (gy - top) * 0.42))
+        c.drawPath(snow, fill(col("#f6f9fc")))
+        c.restore()
+        c.drawPath(path, stroke(col("#8ea3b8", 0.6), 2 * s))
+        # rolling green hills
+        for par, base, amp, color, seed in ((0.12, 60, 60, "#8fbf6a", 900), (0.22, 26, 34, "#6fa653", 2000)):
+            pth = skia.Path()
+            pth.moveTo(0, gy)
+            for i in range(0, W + 20, 20):
+                wx = (i - W / 2) / (par * z) + cx * par + seed
+                h = base + amp * (0.6 * math.sin(wx * 0.003) + 0.4 * math.sin(wx * 0.008 + 1))
+                pth.lineTo(i, gy - h * s)
+            pth.lineTo(W, gy)
+            pth.close()
+            c.drawPath(pth, fill(col(color)))
+        fl = skia.Paint()
+        fl.setShader(skia.GradientShader.MakeLinear(
+            [(0, gy), (0, H)], [col("#7fb85c").toColor(), col("#4f8a3a").toColor()]))
+        c.drawRect(skia.Rect(0, gy, W, H), fl)
+        lp = stroke(col("#3f7230", 0.35), 2 * s)
+        step = 140
+        k0 = int((cx - W / z) // step) - 2
+        for k in range(k0, k0 + int(2 * W / z / step) + 6):
+            sx = W / 2 + (k * step - cx) * z
+            c.drawLine(sx, gy, W / 2 + (sx - W / 2) * 3.2, H, lp)
+        for j in range(1, 6):
+            yy = gy + (H - gy) * (j / 6) ** 1.6
+            c.drawLine(0, yy, W, yy, stroke(col("#3f7230", 0.22), 1.5 * s))
+        # grass tufts along the fighting line (world-locked)
+        gp = stroke(col("#3d6e2c"), 2.2 * s)
+        k0 = int((cx - W / z) // 37) - 2
+        for k in range(k0, k0 + int(2 * W / z / 37) + 4):
+            wx = k * 37 + 13 * math.sin(k * 3.1)
+            sx = W / 2 + (wx - cx) * z
+            hgt = (7 + 5 * abs(math.sin(k * 1.9))) * z
+            for dd in (-1, 0, 1):
+                c.drawLine(sx, gy, sx + dd * 3.5 * z, gy - hgt * (1 - 0.25 * abs(dd)), gp)
+        c.drawLine(0, gy, W, gy, stroke(col("#2c4a22"), 3.5 * s))
+        if dark > 0:
+            c.drawRect(skia.Rect(0, 0, W, H), fill(col("#0e1410", dark)))
+
     def background(self, c, cx, z, dark):
         if self.f.theme == "night":
             return self.background_night(c, cx, z, dark)
+        if self.f.theme == "meadow":
+            return self.background_meadow(c, cx, z, dark)
         W, H, gy = self.W, self.H, self.gy
         sky = skia.Paint()
         sky.setShader(skia.GradientShader.MakeLinear(
@@ -675,12 +805,20 @@ class Renderer:
                 return m * (1 - u) * (1 if i % 2 else -1), 0.0
         return 0.0, 0.0
 
-    def blade_trail(self, c, who, t, color):
+    def blade_trail(self, c, who, t, color, second=False):
         f = self.f
+        st = f.tracks[who][1]
+        if st.get("twin") and not second:
+            self.blade_trail(c, who, t, color, True)
         N, dt = 10, 0.012
         prev = None
         for k in range(N):
             J = f.joints(who, t - k * dt)
+            if st.get("twin"):
+                if J["p"].get("nosw2" if second else "nosw", 0) > 0.5:
+                    break
+                import chain
+                J = chain.sword_view(J, second)
             if J["p"]["sheath"] > 0.5 or (k and J["facing"] != fc0):
                 break
             if not k:
@@ -869,6 +1007,15 @@ class Renderer:
             c.translate(jx, jy)
             if style.get("sword") == "scythe":
                 draw_scythe(c, J, style, 1.0, flat)
+            elif style.get("sword") == "sickle":
+                import chain
+                chain.draw_sickle(c, J, style, 1.0, flat)
+            elif style.get("twin"):
+                import chain
+                for second, key in ((False, "nosw"), (True, "nosw2")):
+                    if p.get(key, 0) < 0.5:
+                        draw_sword(c, chain.sword_view(J, second), flat or style["steel"],
+                                   flat or "#222222", 1.0, 0, "katana")
             elif style.get("sword") != "spear" and p["sheath"] < 0.5:
                 draw_sword(c, J, flat or style["steel"], flat or "#222222", 1.0,
                            0, style.get("sword", "katana"))
@@ -1428,11 +1575,17 @@ class Renderer:
             self.tassel(c, who, t, flat)
             draw_fighter(c, J, style, flat=flat, tails=tails)
             elements.decorate(self, c, who, J, style, t, flat)
+            if f.chain is not None and who == f.chain_who:
+                f.chain.draw(c, t, flat)
             if not flat:
                 self.draw_wounds(c, who, J, vt, flat)
             if J["p"]["sheath"] < 0.5 and not style.get("unarmed"):
                 self.blade_trail(c, who, t, "#ffffff" if flat else style.get("trail", "#ffffff"))
             c.restore()
+        if f.loose:
+            import chain
+            for ls in f.loose.values():
+                chain.draw_loose(c, ls, t, flat)
         self.broken_pieces(c, t, flat)
         self.shield_pieces(c, t, flat)
         self.head_piece(c, t, flat)

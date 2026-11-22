@@ -208,6 +208,10 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         polyline(c, [J["hip"], J["knb"], J["ftb"]], ol)
     limb(c, J, ("sho", "elb", "hab"), pb)
     limb(c, J, ("hip", "knb", "ftb"), pb)
+    if style.get("twin") and p.get("nosw2", 0) < 0.5 and "tipb" in J:
+        from chain import sword_view
+        draw_sword(c, sword_view(J, True), flat or style["steel"], flat or "#222222", alpha, 0,
+                   style.get("sword2", "katana"))
     if plate:
         plate_joints(c, J, ("elb", "knb", "hab"), back, S, alpha)
     if style.get("scabbard"):
@@ -287,7 +291,12 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         c.drawCircle(ex, ey, 2.2 * S, fill(col(flat or style["eye"], alpha)))
     if style.get("hood") and not headless:
         draw_hood(c, hx, hy, ux, uy, rx, ry, R, S, style, J["facing"], alpha, flat)
-    if style.get("sword") == "scythe":
+    if style.get("sword") == "sickle":
+        from chain import draw_sickle
+        draw_sickle(c, J, style, alpha, flat)
+    elif p.get("nosw", 0) > 0.5:
+        pass
+    elif style.get("sword") == "scythe":
         if p.get("broken", 0) < 0.5:
             draw_scythe(c, J, style, alpha, flat)
     elif style.get("sword") == "spear":

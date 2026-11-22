@@ -285,6 +285,7 @@ def edit_kit(put, rng, t0, kind, kw):
     RINGS = ["clash_ring_1", "clash_ring_2"]
     METAL = ["metal_hit_1", "metal_hit_2", "metal_hit_3", "metal_hit_4"]
     PUNCH = ["punch_heavy_0", "punch_heavy_1", "punch_heavy_2"]
+    STEEL_ = ["steel_1", "steel_2", "steel_3", "steel_4", "steel_5", "steel_6", "steel_7"]
     if kind == "swoosh":
         if kw.get("scythe"):
             put(t0 - 0.05, pitch(sample(f"scythe_woosh_{rng.integers(1, 3)}"), 0.85 * r), 0.8 * v)
@@ -296,6 +297,46 @@ def edit_kit(put, rng, t0, kind, kw):
         else:
             put(t0 - 0.03, pitch(pick(rng, SWISH), 1.12 * r), 0.75 * v)
             put(t0 - 0.05, fade(pitch(sample("fast_whoosh"), 1.2 * r), 0, 0.1, 0.4), 0.4 * v)
+        return True
+    CHAIN = ["chain_hit_1", "chain_hit_2", "chain_hit_3"]
+    if kind == "chainwhoosh":
+        put(t0 - 0.04, pitch(sample("scythe_woosh_2"), 1.35 * r), 0.45 * v)
+        put(t0 - 0.03, pitch(pick(rng, SWISH), 0.8 * r), 0.35 * v)
+        put(t0, fade(pitch(sample("chain_rattle"), 1.15 * r), 0, 0.1, 0.35), 0.35 * v)
+        return True
+    if kind == "chainspin":
+        d_ = kw.get("dur", 0.6)
+        n = max(2, int(d_ / 0.16))
+        for i in range(n):
+            u = i / max(1, n - 1)
+            put(t0 + d_ * u, pitch(sample("scythe_woosh_1"), (1.2 + 0.35 * u) * r), (0.25 + 0.3 * u) * v)
+        x = sample("chain_rattle")
+        put(t0, fade(x[:int(min(len(x) / SR, d_ + 0.2) * SR)], 0.05, 0.2), 0.5 * v)
+        return True
+    if kind == "chainthrow":
+        put(t0 - 0.02, fade(pitch(sample("fast_whoosh"), 1.0 * r), 0, 0.1, 0.5), 0.7 * v)
+        put(t0, fade(pitch(sample("chain_reel"), 1.25 * r), 0.01, 0.15, 0.55), 0.7 * v)
+        return True
+    if kind == "chainyank":
+        put(t0, fade(pitch(sample("chain_pull"), 1.1 * r), 0.0, 0.2, 0.6), 0.8 * v)
+        put(t0, pitch(pick(rng, CHAIN), 0.85 * r), 0.8 * v)
+        put(t0, fade(pitch(sample("chain_reel"), 1.4 * r), 0.0, 0.1, 0.35), 0.5 * v)
+        return True
+    if kind == "chainwrap":
+        for i in range(3):
+            put(t0 + i * 0.045, pitch(pick(rng, CHAIN), (1.0 + 0.1 * i) * r), (0.8 - 0.15 * i) * v)
+        put(t0, pitch(pick(rng, STEEL_), 1.2 * r), 0.35 * v)
+        return True
+    if kind == "chaindrop":
+        put(t0, fade(sample("chain_drop"), 0, 0.3, 1.0), 0.6 * v)
+        return True
+    if kind == "swordland":
+        put(t0, pitch(sample("sword_drop"), r), 0.8 * v)
+        put(t0, pitch(pick(rng, RINGS), 1.2 * r), 0.3 * v)
+        return True
+    if kind == "catch":
+        put(t0, pitch(sample("metal_click"), r), 0.7 * v)
+        put(t0, pitch(pick(rng, SWISH), 1.3 * r), 0.3 * v)
         return True
     if kind == "thrust":
         put(t0 - 0.06, fade(pitch(sample("fast_whoosh"), 1.35 * r), 0, 0.1, 0.4), 0.8 * v)
@@ -328,6 +369,14 @@ def edit_kit(put, rng, t0, kind, kw):
         put(t0, sample("orchestra_hit"), 0.45)
         return True
     STEEL = ["steel_1", "steel_2", "steel_3", "steel_4", "steel_5", "steel_6", "steel_7"]
+    if kind == "clash" and kw.get("chain"):
+        put(t0, pitch(pick(rng, CHAIN), 0.9 * r), 1.0 * v)
+        put(t0, pitch(pick(rng, STEEL), 1.15 * r), 0.55 * v)
+        put(t0, fade(pitch(sample("slice_ring"), 1.3 * r), 0, 0.3, 0.6), 0.3 * v)
+        if big:
+            put(t0, pitch(pick(rng, PUNCH), 0.75), 0.8 * v)
+            put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.0), 0.5 * v)
+        return True
     if kind == "clash":
         put(t0, pitch(pick(rng, STEEL), (0.9 if big else 1.0) * r), 0.9 * v)
         put(t0, pitch(pick(rng, RINGS), (0.85 if big else 1.0) * r), 0.6 * v)
@@ -339,7 +388,9 @@ def edit_kit(put, rng, t0, kind, kw):
             put(t0, fade(sample("cinematic_boom"), 0, 0.8, 2.2), 0.55 * v)
         return True
     if kind == "hit":
-        blunt = kw.get("part") in ("hilt0", "hab", "ftf")
+        blunt = kw.get("part") in ("hilt0", "hab", "ftf", "chain")
+        if kw.get("part") == "chain":
+            put(t0, pitch(pick(rng, CHAIN), 0.8 * r), 0.9 * v)
         if blunt:
             put(t0, pitch(pick(rng, ["impact_flesh_1", "impact_flesh_2", "impact_flesh_3"]), r), 0.9 * v)
             put(t0, pitch(sample("bonebreak"), r), 0.45 * v)

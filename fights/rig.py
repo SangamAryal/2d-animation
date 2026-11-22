@@ -17,12 +17,12 @@ L_SHIN = 35.0
 FOOT_R = 4.0
 
 # Pose keys that are angles (interpolated linearly), and scalar keys.
-ANGLE_KEYS = ["T", "H", "uaf", "faf", "uab", "fab", "thf", "shf", "thb", "shb", "sw"]
-SCALAR_KEYS = ["grip", "air", "dy", "rot", "sq"]
-STEP_KEYS = ["sheath", "broken", "headless", "hidden", "noshield"]
+ANGLE_KEYS = ["T", "H", "uaf", "faf", "uab", "fab", "thf", "shf", "thb", "shb", "sw", "sw2"]
+SCALAR_KEYS = ["grip", "air", "dy", "rot", "sq", "reel"]
+STEP_KEYS = ["sheath", "broken", "headless", "hidden", "noshield", "nosw", "nosw2"]
 
 BASE = dict(T=0, H=0, uaf=175, faf=165, uab=185, fab=190, thf=170, shf=180,
-            thb=192, shb=182, sw=120, grip=0, air=0, dy=0, rot=0, sq=0, sheath=0, broken=0, headless=0, hidden=0, noshield=0)
+            thb=192, shb=182, sw=120, sw2=150, grip=0, air=0, dy=0, rot=0, sq=0, reel=70, sheath=0, nosw=0, nosw2=0, broken=0, headless=0, hidden=0, noshield=0)
 
 
 def d(a):
