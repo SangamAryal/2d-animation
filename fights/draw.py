@@ -313,6 +313,8 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
             draw_scythe(c, J, style, alpha, flat)
     elif style.get("sword") == "spear":
         draw_spear(c, J, style, alpha, flat, p.get("broken", 0))
+    elif style.get("sword") == "axe":
+        draw_axe(c, J, style, alpha, flat)
     elif p["sheath"] < 0.5 and not style.get("unarmed"):
         draw_sword(c, J, flat or style["steel"], flat or "#222222", alpha,
                    p.get("broken", 0), style.get("sword", "katana"))
@@ -620,3 +622,48 @@ def draw_hood(c, hx, hy, ux, uy, rx, ry, R, S, style, fc, alpha=1.0, flat=None):
         e = P(0.08, b)
         c.drawCircle(e[0], e[1], 3.4 * S, fill(col(glow, alpha * 0.35)))
         c.drawCircle(e[0], e[1], 1.7 * S, fill(col("#ffffff", alpha)))
+
+def draw_axe(c, J, style, alpha=1.0, flat=None):
+    """Two-handed war axe: long haft (hilt0 -> tip) with a bearded head at the
+    top whose edge leads the swing (the side the blade turns toward)."""
+    S = J["size"]
+    butt, tip = J["hilt0"], J["tip"]
+    dark = flat or "#171310"
+    line(c, butt, tip, stroke(col(dark, alpha), 7.4 * S))
+    line(c, butt, tip, stroke(col(flat or style.get("wood", "#6e4a2a"), alpha), 4.2 * S))
+    sx, sy = J["sw_dir"]
+    f = J["facing"]
+    nx, ny = sy * f, -sx * f            # leading side of the swing
+    hl = style.get("head_len", 30) * S
+    hw = style.get("head_w", 30) * S
+    top = (tip[0] - sx * 2 * S, tip[1] - sy * 2 * S)
+    low = (tip[0] - sx * hl, tip[1] - sy * hl)
+    e_top = (top[0] + nx * hw * 0.95 + sx * 8 * S, top[1] + ny * hw * 0.95 + sy * 8 * S)
+    e_bot = (low[0] + nx * hw * 1.05 - sx * 10 * S, low[1] + ny * hw * 1.05 - sy * 10 * S)
+    mid = ((top[0] + low[0]) / 2 + nx * hw * 0.42, (top[1] + low[1]) / 2 + ny * hw * 0.42)
+    path = skia.Path()
+    path.moveTo(*top)
+    path.lineTo(*e_top)
+    path.quadTo(mid[0] + nx * hw * 0.95, mid[1] + ny * hw * 0.95, e_bot[0], e_bot[1])
+    path.quadTo(mid[0], mid[1], low[0], low[1])
+    path.close()
+    c.drawPath(path, fill(col(flat or style.get("steel", "#d7dce1"), alpha)))
+    c.drawPath(path, stroke(col(dark, alpha), 2.4 * S))
+    if not flat:
+        edge = skia.Path()
+        edge.moveTo(*e_top)
+        edge.quadTo(mid[0] + nx * hw * 0.95, mid[1] + ny * hw * 0.95, e_bot[0], e_bot[1])
+        c.drawPath(edge, stroke(col(style.get("edge", "#ffffff"), alpha), 2.0 * S))
+    # back spike
+    sp = ((top[0] + low[0]) / 2 - nx * hw * 0.55, (top[1] + low[1]) / 2 - ny * hw * 0.55)
+    path2 = skia.Path()
+    path2.moveTo(top[0] - sx * 6 * S, top[1] - sy * 6 * S)
+    path2.lineTo(*sp)
+    path2.lineTo(low[0] + sx * 6 * S, low[1] + sy * 6 * S)
+    path2.close()
+    c.drawPath(path2, fill(col(flat or style.get("steel", "#d7dce1"), alpha)))
+    c.drawPath(path2, stroke(col(dark, alpha), 2.0 * S))
+    for u in (0.12, 0.5):
+        q = (butt[0] + (tip[0] - butt[0]) * u, butt[1] + (tip[1] - butt[1]) * u)
+        c.drawCircle(q[0], q[1], 4.0 * S, fill(col(flat or style.get("wrap", "#2c2522"), alpha)))
+

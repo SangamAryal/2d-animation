@@ -507,6 +507,32 @@ def edit_kit(put, rng, t0, kind, kw):
         put(t0, pitch(pick(rng, ["armor_step_1", "armor_step_2", "armor_step_3", "armor_step_4"]), r), 0.9 * v)
         put(t0, pitch(pick(rng, ["step_0", "step_1", "step_2"]), 0.7 * r), 0.4 * v)
         return True
+    if kind == "treecut":
+        put(t0, sample("katana_cut"), 0.9 * v)
+        put(t0, pitch(sample("bonebreak"), 0.6), 0.9 * v)
+        put(t0 + 0.05, pitch(sample("blunt_2"), 0.7), 0.7 * v)
+        return True
+    if kind == "treefall":
+        put(t0, pitch(sample("body_thud"), 0.55), 1.0 * v)
+        put(t0, pitch(sample("bonebreak"), 0.5), 0.6 * v)
+        put(t0, fade(sample("cinematic_boom"), 0, 0.5, 1.6), 0.5 * v)
+        return True
+    if kind == "rocksmash":
+        put(t0, sample("mining_0"), 1.0 * v)
+        put(t0 + 0.02, pitch(sample("mining_1"), 0.8), 0.9 * v)
+        put(t0, pitch(sample("metal_heavy_1"), 0.6), 0.5 * v)
+        put(t0, fade(sample("cinematic_boom"), 0, 0.6, 2.0), 0.7 * v)
+        return True
+    if kind == "ledge":
+        put(t0, fade(sample("cinematic_boom"), 0, 1.0, 3.0), 1.0)
+        for k_ in range(5):
+            put(t0 + 0.12 * k_, pitch(sample(f"mining_{k_ % 2}"), 0.55 + 0.05 * k_), 0.7)
+        put(t0, pitch(sample("bonebreak"), 0.45), 0.8)
+        return True
+    if kind == "pebbles":
+        for k_ in range(3):
+            put(t0 + 0.09 * k_, pitch(sample(f"mining_{k_ % 2}"), 1.6 + 0.2 * k_), 0.25 * v)
+        return True
     if kind == "roar":
         put(t0, fade(pitch(sample("dark_riser"), 1.0), 0.05, 0.3), 0.5 * v)
         put(t0, pitch(sample("vine_boom"), 0.8), 0.5 * v)

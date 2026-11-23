@@ -25,7 +25,7 @@ from draw import scythe_points  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"ambush": "choreo_ambush", "spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe", "chain": "choreo_chain", "chain2": "choreo_chain2"}
+FIGHTS = {"cliff": "choreo_cliff", "ambush": "choreo_ambush", "spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe", "chain": "choreo_chain", "chain2": "choreo_chain2"}
 
 
 def typeface(weight="ExtraBold"):
@@ -147,6 +147,7 @@ class Fight:
         # health bars are off for all fights (Sangam, 2026-11-22); show_hp=True brings them back
         self.hp = d.get("hp", []) if d.get("show_hp") else []
         self.theme = d.get("theme", "day")
+        self.terrain = d.get("terrain")     # cliff edge, tree, boulder (terrain.py)
         self.springy = d.get("springy", False)
         self.red_hits = d.get("red_hits", False)   # dark red impact frames on cuts
         self.fluid = d.get("fluid", False)
@@ -281,6 +282,8 @@ class Renderer:
         self.font_mid = skia.Font(typeface("ExtraBold"), 64 * scale)
         self.font_small = skia.Font(typeface("Bold"), 30 * scale)
         self.prepare_events()
+        import terrain
+        terrain.init(self)
         self.prepare_camera()
 
     # ---------------------------------------------------- events
@@ -485,7 +488,7 @@ class Renderer:
             st = f.tracks[who][1]
             if st.get("unarmed"):
                 continue
-            heavy = st.get("sword") == "cleaver"
+            heavy = st.get("sword") in ("cleaver", "axe")
             scythe = st.get("sword") == "scythe"
             spear = st.get("sword") in ("spear", "scythe")
             last = -9
@@ -540,8 +543,8 @@ class Renderer:
             for fv, fids in self.framing:
                 if fv <= vt:
                     ids_ = fids
-            Js = [f.joints(w, t) for w in ids_]
-            xs = [J["hip"][0] for J in Js]
+            Js = [f.joints(w, t) for w in ids_ if isinstance(w, str)]
+            xs = [J["hip"][0] for J in Js] + [w for w in ids_ if not isinstance(w, str)]
             for t0, who, J0, A0 in self.decaps:
                 if t >= t0:   # keep the flying head in the shot
                     d_ = 1 if J0["hip"][0] > A0["hip"][0] else -1
@@ -1092,6 +1095,9 @@ class Renderer:
                     if p.get(key, 0) < 0.5:
                         draw_sword(c, chain.sword_view(J, second), flat or style["steel"],
                                    flat or "#222222", 1.0, 0, "katana")
+            elif style.get("sword") == "axe":
+                from draw import draw_axe
+                draw_axe(c, J, style, 1.0, flat)
             elif style.get("sword") != "spear" and p["sheath"] < 0.5:
                 draw_sword(c, J, flat or style["steel"], flat or "#222222", 1.0,
                            0, style.get("sword", "katana"))
@@ -1266,6 +1272,11 @@ class Renderer:
                                stroke(col(flat or self.BLOOD), r * 1.6))
                 elif not flat and i % 3 == 0:
                     lx = px + vx * tl
+                    if self.f.terrain:
+                        import terrain
+                        e_ = terrain.edge_at(self, self.frames[min(self.n - 1, int(round(vt * FPS)))])
+                        if e_ is not None and lx > e_ - 4:
+                            continue      # fell into the valley
                     grow = min(1, (dt - tl) / 0.15)
                     w = r * (1.0 + 0.8 * grow)
                     c.drawOval(skia.Rect(lx - w, -6.5, lx + w, -2.5),
@@ -1645,6 +1656,10 @@ class Renderer:
         c.save()
         c.translate(W / 2 - cx * z + shx, self.gy + shy)
         c.scale(z, -z)
+        if f.terrain:
+            import terrain
+            terrain.ground_mask(self, c, t, flat)
+            terrain.draw_props(self, c, t, flat)
         if self.impact_pt is not None:
             self.radial(c, self.impact_pt, flat, i)
         if not flat:
@@ -1654,10 +1669,20 @@ class Renderer:
                     continue
                 S = J["size"]
                 h = J["hip"][1]
+                if h < -10:
+                    continue        # falling into the valley: no ground under him
                 sa = max(0.0, 0.28 - h / 900)
                 c.drawOval(skia.Rect(J["hip"][0] - 34 * S, -5, J["hip"][0] + 34 * S, 5),
                            fill(col("#3a2e22", sa)))
-        self.draw_craters(c, vt, flat)
+        if f.terrain:
+            import terrain
+            e_ = terrain.edge_at(self, t)
+            c.save()
+            c.clipRect(skia.Rect(-1e5, -1e5, e_ if e_ is not None else 1e5, 1e5))
+            self.draw_craters(c, vt, flat)
+            c.restore()
+        else:
+            self.draw_craters(c, vt, flat)
         elements.draw_ground(self, c, t, flat)
         elements.draw_back(self, c, t, flat)
         powers.draw_world(self, c, t, vt, flat)
