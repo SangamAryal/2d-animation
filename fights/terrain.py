@@ -31,6 +31,7 @@ def init(r):
     r.ter = dict(tr)
     r.ter_ev = [(t, k, kw) for t, k, kw in f.ev if k in ("treecut", "rocksmash", "ledge", "pebbles")]
     r.ter_frags = []
+    _check_strikes(r, tr)
     for t, k, kw in r.ter_ev:
         if k == "rocksmash":
             rng = np.random.default_rng(int(t * 1000) % 9973)
@@ -52,6 +53,31 @@ def init(r):
                     y=rng.uniform(2, 20), vx=rng.uniform(20, 160), vy=rng.uniform(20, 200),
                     w=rng.uniform(-10, 10), r=rng.uniform(3, 7) if k == "pebbles" else rng.uniform(5, 14),
                     seed=int(rng.integers(1e6)), fall=True))
+
+
+def _check_strikes(r, tr):
+    """A treecut / rocksmash made by a fighter (by=...) must be where his weapon
+    actually is: the cut height is taken from the weapon head at that moment,
+    and it is an error if the head is not at the trunk / on the rock."""
+    for i, (t, k, kw) in enumerate(r.ter_ev):
+        by = kw.get("by")
+        if not by or k not in ("treecut", "rocksmash"):
+            continue
+        J = r.f.joints(by, t)
+        hx, hy = J["tip"]
+        if k == "treecut":
+            dx = hx - tr["tree"]
+            if abs(dx) > 14 or not (8 < hy < TREE_H - 120):
+                raise ValueError(f"treecut at {t:.2f}: axe head at ({hx:.0f},{hy:.0f}), "
+                                 f"trunk at x={tr['tree']}")
+            kw["h"] = round(hy, 1)
+        else:
+            u, v = (hx - tr["boulder"]) / 72.0, hy / 62.0
+            if u * u + v * v > 1.25 or hy < -5:
+                raise ValueError(f"rocksmash at {t:.2f}: axe head at ({hx:.0f},{hy:.0f}), "
+                                 f"boulder at x={tr['boulder']}")
+        kw["hit_pt"] = (hx, hy)
+        print(f"terrain: {k} at {t:.2f} by {by}: head at ({hx:.0f},{hy:.0f})")
 
 
 def edge_at(r, t):

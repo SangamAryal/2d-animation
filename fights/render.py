@@ -151,6 +151,8 @@ class Fight:
         self.springy = d.get("springy", False)
         self.red_hits = d.get("red_hits", False)   # dark red impact frames on cuts
         self.fluid = d.get("fluid", False)
+        # contact solver keeps clash points clear of the hands (blade on blade)
+        self.clear_hands = d.get("clear_hands", 0)
         self.feet = {}
         self.tracks = {i: (tr, st) for i, tr, st in self.fighters}
         self.ids = [i for i, _, _ in self.fighters]
@@ -318,7 +320,8 @@ class Renderer:
                 continue
             if k == "clash":
                 a, b = (f.joints(w, t) for w in f.pair(k, kw))
-                pt = kw.get("contact") or seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
+                pt = kw.get("contact") or (self.weapon_contact(t, kw) if f.drawn else
+                                           seg_closest(a["w0"], a["tip"], b["w0"], b["tip"]))
                 self.fx.append((vt, k, dict(kw, pt=pt, seed=seed)))
             elif k == "hit":
                 A = f.joints(kw["by"], t)

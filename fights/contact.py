@@ -93,7 +93,24 @@ def clash_segs(J, st, blade=None, chain=False):
         return []
     if st.get("sword") == "scythe":
         return [_sub(J["hilt0"], J["tip"], 0.45, 1.0), (J["tip"], J["blade_end"])]
+    if st.get("sword") == "axe":
+        return axe_segs(J, st)
     return [_sub(J["guard"], J["tip"], 0.25, 0.97)]
+
+
+def axe_segs(J, st):
+    """War axe: the upper 60% of the haft (well clear of both hands) and the
+    head's cutting edge."""
+    g, tp = np.asarray(J["guard"], float), np.asarray(J["tip"], float)
+    d = tp - g
+    d /= max(1e-9, np.linalg.norm(d))
+    f = J["facing"]
+    n = np.array([d[1] * f, -d[0] * f])
+    S = J["size"]
+    hl, hw = st.get("head_len", 30) * S, st.get("head_w", 30) * S
+    e_top = tp + n * hw * 0.95
+    e_bot = tp - d * hl + n * hw * 1.05
+    return [_sub(J["guard"], J["tip"], 0.40, 1.0), (tuple(e_bot), tuple(e_top))]
 
 
 MIN_CROSS = 38.0     # degrees: a block reads as an X, not two parallel sticks
@@ -228,8 +245,7 @@ def solve_contacts(f, verbose=False):
         a_id, b_id = pair(f, k, kw)
 
         def g_at(tt, a_id=a_id, b_id=b_id, k=k, kw=kw):
-            return gap(*shapes(f, k, kw, f.joints_raw(a_id, tt), f.joints_raw(b_id, tt), a_id, b_id),
-                       cross=k in ("clash", "lock"))
+            return _gap(f, k, kw, f.joints_raw(a_id, tt), f.joints_raw(b_id, tt), a_id, b_id)
         g0 = g_at(t)[0]
         # 1. re-time to the closest moment (never later than 2 frames)
         best_t, best_g = t, g0
@@ -319,4 +335,16 @@ def _try(f, k, kw, t, a_id, b_id, who, old, dsw, dx):
     f.corr[who].set(t, dsw, dx)
     f._anch[who] = f.corr[who].anchors()
     JA, JB = f.joints_raw(a_id, t), f.joints_raw(b_id, t)
-    return gap(*shapes(f, k, kw, JA, JB, a_id, b_id), cross=k in ("clash", "lock"))[0]
+    return _gap(f, k, kw, JA, JB, a_id, b_id)[0]
+
+
+def _gap(f, k, kw, JA, JB, a_id, b_id):
+    """gap() for the solver. With the fight option clear_hands=N, a clash
+    point closer than N to any of the four hands counts as extra distance, so
+    the solver finds a blade-on-blade crossing instead."""
+    g, pt = gap(*shapes(f, k, kw, JA, JB, a_id, b_id), cross=k in ("clash", "lock"))
+    hc = getattr(f, "clear_hands", 0)
+    if hc and k in ("clash", "lock") and pt is not None:
+        dh = min(math.dist(pt, J[h]) for J in (JA, JB) for h in ("haf", "hab"))
+        g += max(0.0, hc - dh) * 0.8
+    return g, pt
