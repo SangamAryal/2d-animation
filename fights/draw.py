@@ -256,6 +256,17 @@ def draw_fighter(c, J, style, alpha=1.0, flat=None, tails=None):
         cx, cy = hx + ux * 3 * S, hy + uy * 3 * S
         line(c, (cx - rx * R, cy - ry * R), (cx + rx * R, cy + ry * R),
              stroke(col(flat or style["band"], alpha), 4.5 * S, skia.Paint.kButt_Cap))
+    if style.get("mask") and not headless:
+        # bandit's cloth mask over the lower face, knot tails at the back
+        mc = flat or style["mask"]
+        cx, cy = hx - ux * R * 0.28, hy - uy * R * 0.28
+        line(c, (cx - rx * R * 1.02, cy - ry * R * 1.02), (cx + rx * R * 1.02, cy + ry * R * 1.02),
+             stroke(col(mc, alpha), 7.5 * S, skia.Paint.kButt_Cap))
+        kx, ky = cx - rx * R * 1.0, cy - ry * R * 1.0
+        polyline(c, [(kx, ky), (kx - rx * 7 * S - ux * 5 * S, ky - ry * 7 * S - uy * 5 * S)],
+                 stroke(col(mc, alpha), 3.2 * S))
+        polyline(c, [(kx, ky), (kx - rx * 9 * S + ux * 1 * S, ky - ry * 9 * S + uy * 1 * S)],
+                 stroke(col(mc, alpha), 2.6 * S))
     if style.get("hat"):
         top = (hx + ux * 26, hy + uy * 26)
         b0 = (hx + ux * 5 - rx * 30, hy + uy * 5 - ry * 30)

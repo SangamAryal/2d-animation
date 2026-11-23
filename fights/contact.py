@@ -150,9 +150,18 @@ def gap(sa, sb, cross=False):
     return best
 
 
-def contact_point(f, t):
+def pair(f, k, kw):
+    """The two fighters an event is between. Clashes name them with a=/b=
+    (default: the first two fighters); hits and decaps use by= and on=/who=."""
+    if k in ("clash", "lock", "scrape"):
+        return kw.get("a", f.ids[0]), kw.get("b", f.ids[1])
+    by = kw["by"]
+    return by, kw.get("on") or kw.get("who") or f.other(by)
+
+
+def contact_point(f, t, a_id=None, b_id=None):
     """Where the two weapons actually touch (or are closest) at story time t."""
-    a_id, b_id = f.ids
+    a_id, b_id = a_id or f.ids[0], b_id or f.ids[1]
     JA, JB = f.joints_raw(a_id, t), f.joints_raw(b_id, t)
     return gap(*shapes(f, "clash", {}, JA, JB, a_id, b_id))
 
@@ -200,13 +209,13 @@ def solve_contacts(f, verbose=False):
     ids = f.ids
     f.corr = {i: Corrections() for i in ids}
     f._anch = {i: [] for i in ids}
-    a_id, b_id = ids
     report = []
     for t, k, kw in list(f.ev):
         if k == "scrape":
             n = max(2, int(kw["dur"] / 0.08))
             for i in range(1, n + 1):
-                f.ev.append((t + kw["dur"] * i / n, "lock", dict(lock=True)))
+                f.ev.append((t + kw["dur"] * i / n, "lock",
+                             dict(lock=True, a=pair(f, k, kw)[0], b=pair(f, k, kw)[1])))
     order = sorted(range(len(f.ev)), key=lambda j: f.ev[j][0])
     for j in order:
         t, k, kw = f.ev[j]
@@ -216,8 +225,9 @@ def solve_contacts(f, verbose=False):
             continue
         if kw.get("nosolve"):     # contact placed by construction (chain, thrown sword)
             continue
+        a_id, b_id = pair(f, k, kw)
 
-        def g_at(tt):
+        def g_at(tt, a_id=a_id, b_id=b_id, k=k, kw=kw):
             return gap(*shapes(f, k, kw, f.joints_raw(a_id, tt), f.joints_raw(b_id, tt), a_id, b_id),
                        cross=k in ("clash", "lock"))
         g0 = g_at(t)[0]

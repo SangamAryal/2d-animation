@@ -25,7 +25,7 @@ from draw import scythe_points  # noqa: E402
 
 FPS = 60
 FONT_DIR = "/usr/share/fonts/opentype/inter/"
-FIGHTS = {"spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe", "chain": "choreo_chain", "chain2": "choreo_chain2"}
+FIGHTS = {"ambush": "choreo_ambush", "spear": "choreo_spear", "patience": "choreo", "power": "choreo_power", "fire": "choreo_fire", "time": "choreo_time", "knight": "choreo_knight", "knightwin": "choreo_knight_win", "scythe": "choreo_scythe", "chain": "choreo_chain", "chain2": "choreo_chain2"}
 
 
 def typeface(weight="ExtraBold"):
@@ -168,7 +168,7 @@ class Fight:
                     imp[on].append((t, dict(T=-650 * v * s_, H=-1500 * v * s_, uab=-600 * v * s_)))
                     imp[kw["by"]].append((t, dict(T=-200 * v, sw=-600 * v, uaf=-300 * v)))
                 elif k == "clash":
-                    for i in self.ids:
+                    for i in self.pair(k, kw):
                         imp[i].append((t, dict(T=-260 * v, H=-700 * v, sw=-500 * v,
                                                uab=-500 * v)))
                 elif k == "flinch":
@@ -182,7 +182,7 @@ class Fight:
                         continue
                     v = kw.get("v", 1.0) * (1.5 if kw.get("big") else 1.0)
                     if k == "clash":
-                        for i in self.ids:
+                        for i in self.pair(k, kw):
                             roots[i].append((t, -self.tracks[i][0].facing(t) * 380 * v, 0.6 * v))
                         continue
                     on = kw.get("on") or kw.get("who") or self.other(kw["by"])
@@ -198,11 +198,13 @@ class Fight:
             import contact
             self.contact_report = contact.solve_contacts(self)
         self.loose, self.chain = {}, None
-        if any(st.get("sword") == "sickle" for _, _, st in self.fighters):
+        if any(k == "loose" for _, k, _ in self.ev):
             import chain
             for t, k, kw in self.ev:
                 if k == "loose":
                     self.loose[kw["id"]] = chain.LooseSword(self, dict(kw, t0=t))
+        if any(st.get("sword") == "sickle" for _, _, st in self.fighters):
+            import chain
             who = [i for i, _, st in self.fighters if st.get("sword") == "sickle"][0]
             self.chain_who = who
             self.chain = chain.ChainSim(self, who, self.ev, self.end)
@@ -256,6 +258,10 @@ class Fight:
             J["bow"] = drag_bows(J, Jp)
         return J
 
+    def pair(self, k, kw):
+        import contact
+        return contact.pair(self, k, kw)
+
     def other(self, who):
         return [i for i in self.ids if i != who][0]
 
@@ -285,6 +291,7 @@ class Renderer:
         self.iai_vt = None
         self.slow_vt = None
         self.focus = []
+        self.framing = []    # (vt, [ids]): from vt on the camera frames only these fighters
         self.win = None
         self.breaks = []
         self.blood = []      # (vt, pt, dir, n, seed)
@@ -307,7 +314,7 @@ class Renderer:
             if elements.prepare(self, t, vt, k, kw) or powers.prepare(self, t, vt, k, kw):
                 continue
             if k == "clash":
-                a, b = f.joints(f.ids[0], t), f.joints(f.ids[1], t)
+                a, b = (f.joints(w, t) for w in f.pair(k, kw))
                 pt = kw.get("contact") or seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
                 self.fx.append((vt, k, dict(kw, pt=pt, seed=seed)))
             elif k == "hit":
@@ -411,6 +418,9 @@ class Renderer:
                 self.win = (vt, kw["name"], kw.get("color", "#d8323c"))
             elif k == "banner":
                 self.banners.append((vt, kw["text"]))
+            elif k == "frame":
+                self.framing.append((vt, list(kw["ids"])))
+                self.framing.sort(key=lambda e: e[0])
             elif k == "focus":
                 end = kw.get("until")
                 self.focus.append((vt, video_time(self.frames, end) if end else 1e9,
@@ -437,7 +447,7 @@ class Renderer:
                         whos.add(kw2.get("on") or kw2.get("who") or f.other(kw2["by"]))
                         m = max(m, 7.0 if kw2.get("big") else 5.0)
                     elif k2 == "clash":
-                        whos.update(f.ids)
+                        whos.update(f.pair(k2, kw2))
                         m = max(m, 5.0 if kw2.get("big") else 3.0)
             a = video_time(self.frames, t)
             self.stop_ranges.append((a, a + kw["dur"], whos, m))
@@ -526,7 +536,11 @@ class Renderer:
         cx = z = None
         for i, t in enumerate(self.frames):
             vt = i / FPS
-            Js = [f.joints(w, t) for w in f.ids]
+            ids_ = f.ids
+            for fv, fids in self.framing:
+                if fv <= vt:
+                    ids_ = fids
+            Js = [f.joints(w, t) for w in ids_]
             xs = [J["hip"][0] for J in Js]
             for t0, who, J0, A0 in self.decaps:
                 if t >= t0:   # keep the flying head in the shot
@@ -1042,12 +1056,13 @@ class Renderer:
                 pts.append((x, 1 - rng.uniform(1, 9) * (j + 1) * 0.6))
             polyline(c, pts, stroke(col("#3a3128", a), 2.6))
 
-    def weapon_contact(self, t):
+    def weapon_contact(self, t, d=None):
         f = self.f
+        a_id, b_id = f.pair("clash", d or {})
         if f.drawn:
             import contact
-            return contact.contact_point(f, t)[1]
-        a, b = f.joints(f.ids[0], t), f.joints(f.ids[1], t)
+            return contact.contact_point(f, t, a_id, b_id)[1]
+        a, b = f.joints(a_id, t), f.joints(b_id, t)
         return seg_closest(a["w0"], a["tip"], b["w0"], b["tip"])
 
     def weapons_over_sparks(self, c, t, vt, flat):
@@ -1090,7 +1105,7 @@ class Renderer:
                 rng = np.random.default_rng(d["seed"])
                 tt = d["t0"]
                 while tt < min(t_now, d["t0"] + d["dur"]):
-                    px, py = self.weapon_contact(tt)
+                    px, py = self.weapon_contact(tt, d)
                     for j in range(3):
                         age = t_now - tt
                         life = rng.uniform(0.15, 0.4)
@@ -1105,7 +1120,7 @@ class Renderer:
                                    stroke(col("#ffd36b", 1 - age / life), 2.4))
                     tt += 1 / 120
                 if t_now <= d["t0"] + d["dur"]:
-                    px, py = self.weapon_contact(t_now)
+                    px, py = self.weapon_contact(t_now, d)
                     fl = 0.7 + 0.3 * math.sin(t_now * 90)
                     c.drawCircle(px, py, 22 * fl, fill(col("#ffd36b", 0.35)))
                     c.drawCircle(px, py, 9 * fl, fill(col("#ffffff", 0.9)))
